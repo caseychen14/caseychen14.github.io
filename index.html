@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Casey Chen</title>
+  <meta name="description" content="Casey Chen — personal website, projects, and contact." />
+  <link rel="stylesheet" href="assets/styles.css" />
+</head>
+<body>
+  <header class="container nav">
+    <a class="brand" href="#">Casey Chen</a>
+    <nav>
+      <a href="#about">About</a>
+      <a href="#experience">Experience</a>
+      <a href="#projects">Projects</a>
+      <a href="#contact">Contact</a>
+    </nav>
+  </header>
+
+  <main class="container">
+    <section class="hero">
+      <h1>Hi, I'm Casey Chen.</h1>
+      <p class="lead">[One-line professional headline — e.g. role, focus area, and what you care about.]</p>
+      <p><a class="button" href="assets/resume.pdf">Download résumé</a></p>
+    </section>
+
+    <section id="about">
+      <h2>About</h2>
+      <p>[Two or three sentences about your background, current work, and interests.]</p>
+    </section>
+
+    <section id="experience">
+      <h2>Experience</h2>
+      <ul class="timeline">
+        <li>
+          <h3>[Role] · [Organization]</h3>
+          <p class="meta">[Start] – [End]</p>
+          <p>[What you did and the impact it had.]</p>
+        </li>
+        <li>
+          <h3>[Degree / Program] · Stanford University</h3>
+          <p class="meta">[Years]</p>
+        </li>
+      </ul>
+    </section>
+
+    <section id="projects">
+      <h2>Projects</h2>
+      <div class="grid">
+        <article class="card">
+          <h3>[Project name]</h3>
+          <p>[Short description.]</p>
+          <a href="#">View →</a>
+        </article>
+        <article class="card">
+          <h3>[Project name]</h3>
+          <p>[Short description.]</p>
+          <a href="#">View →</a>
+        </article>
+      </div>
+    </section>
+
+    <section id="contact">
+      <h2>Contact</h2>
+      <ul class="links">
+        <li><a href="mailto:caseysc@stanford.edu">Email</a></li>
+        <li><a href="https://github.com/caseychen14">GitHub</a></li>
+        <li><a href="https://www.linkedin.com/in/[your-handle]">LinkedIn</a></li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="container footer">
+    <p>© <span id="year"></span> Casey Chen</p>
+  </footer>
+  <script>document.getElementById("year").textContent = new Date().getFullYear();</script>
+</body>
+</html>

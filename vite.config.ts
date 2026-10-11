@@ -10,9 +10,8 @@ export default defineConfig({
       adapter: adapter(),
       extensions: [".svelte", ".md"],
       preprocess: [mdsvex({ extensions: [".md"] })],
-      // Project page: served at https://caseychen14.github.io/caseychen/.
-      // Set base to "" if the repo is renamed to caseychen14.github.io.
-      paths: { base: "/caseychen" },
+      // User page: served at the root, https://caseychen14.github.io/.
+      paths: { base: "" },
     }),
   ],
   test: { include: ["src/**/*.test.ts"] },

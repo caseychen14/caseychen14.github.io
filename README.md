@@ -8,7 +8,7 @@ to static HTML and deployed to GitHub Pages.
 
 ```sh
 npm install
-npm run dev        # http://localhost:5173/caseychen/
+npm run dev        # http://localhost:5173/
 ```
 
 Before pushing, run the same checks CI runs:
@@ -55,11 +55,8 @@ field. `npm test` fails if a referenced PDF or image is missing from `static/`.
 ## Deploy
 
 Push to `main`. `.github/workflows/pages.yml` builds `build/` and publishes it to
-`https://caseychen14.github.io/caseychen/`. (One-time: **Settings → Pages → Source: GitHub Actions**.)
+`https://caseychen14.github.io/`. (One-time: **Settings → Pages → Source: GitHub Actions**.)
 `.github/workflows/ci.yml` runs every check on every push and PR.
-
-To serve at the root `https://caseychen14.github.io/`, rename the repo to `caseychen14.github.io`
-and set `paths.base` to `""` in `vite.config.ts`.
 
 ## Glossary
 
@@ -72,7 +69,8 @@ and set `paths.base` to `""` in `vite.config.ts`.
 - **Frontmatter** — the `---` YAML block at the top of a Markdown file.
 - **Zod schema** — validates each project's frontmatter at build time.
 - **`#lib`** — import alias for `src/lib/` (a Node subpath import declared in `package.json`).
-- **Base path** — `/caseychen`, the URL prefix for a GitHub project page; links go through `resolve()`/`asset()`.
+- **Base path** — the URL prefix the site is served under; empty here because a user page
+  (`<username>.github.io`) serves from the root. Links still go through `resolve()`/`asset()`.
 - **`rel="external"`** — tells SvelteKit's router to do a normal page load (PDFs, other sites).
 - **`.nojekyll`** — tells Pages to serve files as-is, skipping Jekyll processing.
 - **ADR** — Architecture Decision Record; see `docs/adr/`.

@@ -18,7 +18,7 @@
   <meta name="description" content={summary} />
 </svelte:head>
 
-<p><a href="{resolve('/')}#projects">← All projects</a></p>
+<p><a href={resolve("/projects")}>← All projects</a></p>
 <section class="hero">
   <span class="badge">{kind}</span>
   <h1>{title}</h1>

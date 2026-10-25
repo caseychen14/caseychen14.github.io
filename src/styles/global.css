@@ -54,6 +54,10 @@ a:hover {
   margin-left: 1rem;
   color: var(--fg);
 }
+.nav nav a[aria-current="page"] {
+  font-weight: 700;
+  text-decoration: underline;
+}
 .brand {
   font-weight: 700;
   color: var(--fg);

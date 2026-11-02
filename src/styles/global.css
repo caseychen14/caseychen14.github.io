@@ -40,6 +40,10 @@
 * {
   box-sizing: border-box;
 }
+/* Reserve the scrollbar's space on every page so short pages don't shift sideways. */
+html {
+  scrollbar-gutter: stable;
+}
 body {
   margin: 0;
   background: var(--ground);
@@ -228,6 +232,9 @@ p {
   letter-spacing: 0.04em;
   color: var(--earth);
 }
+.brand.g3 {
+  color: transparent;
+}
 .nav nav {
   display: flex;
   flex-wrap: wrap;
@@ -245,9 +252,9 @@ p {
 .reader {
   position: absolute;
   left: 50%;
-  bottom: calc(50% + 6px);
-  width: 66px;
-  height: 22px;
+  bottom: calc(50% + 5px);
+  width: 53px;
+  height: 17.5px;
   transform: translateX(-50%);
   background-image: var(--sweep-sky);
   background-size: 300% 100%;

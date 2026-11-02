@@ -1,8 +1,17 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { grainAt, letterAt, makeGrain, settleTime, type Grain, type Letter } from "./dust";
+  import {
+    GATHER,
+    grainAt,
+    letterAt,
+    makeGrain,
+    settleTime,
+    type Grain,
+    type Letter,
+  } from "./dust";
 
-  // The page's hero: words that form out of dust once, then stay. Drawn on a canvas;
+  // The page's hero: words that form out of dust once, then stay. The dust waits in
+  // clumps until the visitor's first input (move, tap, key, scroll). Drawn on a canvas;
   // the real heading sits beside it for screen readers and search.
   let { lines, spacing = 0.16 }: { lines: string[]; spacing?: number } = $props();
 
@@ -22,6 +31,7 @@
     let tEnd = 0;
     let t0 = 0;
     let animate = true;
+    let waiting = true;
     let raf = 0;
 
     function build() {
@@ -89,11 +99,18 @@
       height = H;
     }
 
+    // Seconds into the animation. Until the first input the clumps sit fully gathered.
+    function elapsed() {
+      if (!animate || reduce.matches) return Infinity;
+      if (waiting) return GATHER;
+      return GATHER + (performance.now() - t0) / 1000;
+    }
+
     function frame() {
-      const s = animate && !reduce.matches ? (performance.now() - t0) / 1000 : Infinity;
+      const s = elapsed();
       const done = s >= tEnd;
       ctx.globalAlpha = 1;
-      if (done) {
+      if (done || waiting) {
         ctx.clearRect(0, 0, width, height);
       } else {
         ctx.fillStyle = TRAIL;
@@ -107,20 +124,33 @@
           ctx.fillRect(p.x, p.y, g.sz, g.sz);
         }
       });
-      if (!done) raf = requestAnimationFrame(frame);
+      if (!done && !waiting) raf = requestAnimationFrame(frame);
     }
 
     function draw() {
       cancelAnimationFrame(raf);
       build();
-      t0 = performance.now();
       frame();
     }
 
-    // A resize after the first run redraws the settled words rather than replaying.
+    const WAKE_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart", "scroll"];
+    function stopListening() {
+      WAKE_EVENTS.forEach((e) => window.removeEventListener(e, wake));
+    }
+    function wake() {
+      stopListening();
+      if (!waiting) return;
+      waiting = false;
+      t0 = performance.now();
+      cancelAnimationFrame(raf);
+      frame();
+    }
+
+    // A resize after the run has started redraws the settled words rather than
+    // replaying; before that, it re-gathers the clumps and keeps waiting.
     const resize = new ResizeObserver(() => {
       if (cv.clientWidth === width) return;
-      animate = false;
+      if (!waiting) animate = false;
       draw();
     });
 
@@ -129,12 +159,14 @@
       if (cancelled) return;
       draw();
       resize.observe(cv);
+      WAKE_EVENTS.forEach((e) => window.addEventListener(e, wake, { passive: true }));
     });
 
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
       resize.disconnect();
+      stopListening();
     };
   });
 </script>

@@ -35,6 +35,8 @@
   // The canvas reaches this far (px) past the words on every side and fades out there, so
   // blown sand drifts off softly instead of being cut off at a hard edge. Matches the CSS.
   const BLEED = 48;
+  // A moving grain is drawn as a streak covering this many seconds of its travel.
+  const STREAK = 0.025;
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let fanner: HTMLButtonElement | undefined = $state();
@@ -156,13 +158,28 @@
       const t = gust ? (now - gust.t0) / 1000 : 0;
       ctx.clearRect(-BLEED, -BLEED, width + 2 * BLEED, height + 2 * BLEED);
       buckets.forEach((grains, i) => {
-        ctx.fillStyle = `rgb(${COLORS[i]})`;
+        ctx.fillStyle = ctx.strokeStyle = `rgb(${COLORS[i]})`;
         for (const g of grains) {
           let x = g.tx;
           let y = g.ty;
           if (gust?.grains.has(g)) ({ x, y } = gustAt(g, t));
-          ctx.globalAlpha = g.a;
-          ctx.fillRect(x, y, g.sz, g.sz);
+          if (g.vx || g.vy) {
+            // Blown grains blur along their path (more mid-hop, when they also lift
+            // toward the light a little: slightly bigger and brighter).
+            const hop = g.air > 0;
+            const blur = hop ? STREAK * 1.8 : STREAK;
+            const cx = x + g.sz / 2;
+            const cy = y + g.sz / 2;
+            ctx.globalAlpha = hop ? Math.min(1, g.a * 1.15) : g.a;
+            ctx.lineWidth = hop ? g.sz * 1.25 : g.sz;
+            ctx.beginPath();
+            ctx.moveTo(cx - g.vx * blur, cy - g.vy * blur);
+            ctx.lineTo(cx, cy);
+            ctx.stroke();
+          } else {
+            ctx.globalAlpha = g.a;
+            ctx.fillRect(x, y, g.sz, g.sz);
+          }
         }
       });
       ctx.globalAlpha = 1;

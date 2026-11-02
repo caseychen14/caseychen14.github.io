@@ -203,15 +203,64 @@ describe("wind", () => {
     expect(Math.atan2(a.wy, a.wx)).not.toBeCloseTo(Math.atan2(b.wy, b.wx), 2);
   });
 
-  it("pulls less on grains further away, nearer the beam's edge, or heavier", () => {
+  it("blows slower further away and nearer the beam's edge", () => {
     const near = inBeam(50);
     const far = inBeam(300);
     const edge = inBeam(50, 60);
-    const heavy = inBeam(50, 0, 2.2);
-    for (const g of [near, far, edge, heavy]) startWind(g, ...from, ...dir, reach, () => 0.5);
+    for (const g of [near, far, edge]) startWind(g, ...from, ...dir, reach, () => 0.5);
     expect(pullOf(near)).toBeGreaterThan(pullOf(far));
     expect(pullOf(near)).toBeGreaterThan(pullOf(edge));
-    expect(pullOf(near)).toBeGreaterThan(pullOf(heavy));
+  });
+
+  it("moves heavier grains less in the same wind", () => {
+    const light = inBeam(60, 0, 1.6);
+    const heavy = inBeam(60, 0, 2.2);
+    for (const g of [light, heavy]) {
+      startWind(g, ...from, ...dir, reach, () => 0.5);
+      blow(g);
+    }
+    const moved = (g: Grain) => Math.hypot(g.tx - g.hx, g.ty - g.hy);
+    expect(moved(light)).toBeGreaterThan(moved(heavy));
+  });
+
+  it("sticks: a grain the wind can't unstick stays exactly where it is", () => {
+    const g = inBeam(60);
+    startWind(g, ...from, ...dir, reach, () => 0.5);
+    g.wx *= 0.05; // a breath too weak to beat the ground's grip
+    g.wy *= 0.05;
+    blow(g);
+    expect([g.tx, g.ty]).toEqual([g.hx, g.hy]);
+  });
+
+  it("stops sharply on the ground rather than coasting to a halt", () => {
+    const g = inBeam(60, 0, 2.2); // heavy, so it only slides
+    startWind(g, ...from, ...dir, reach, () => 0.5);
+    let t = 0;
+    let slowFrames = 0;
+    while (windStep(g, t, 1 / 60)) {
+      t += 1 / 60;
+      const v = Math.hypot(g.vx, g.vy);
+      if (t > WIND && v > 0 && v < 5) slowFrames++;
+    }
+    expect(slowFrames).toBeLessThan(12); // under a fifth of a second creeping slowly
+  });
+
+  it("lets light grains hop, while heavy grains only slide", () => {
+    const hops = (size: number) => {
+      const g = inBeam(40, 0, size);
+      startWind(g, ...from, ...dir, reach, () => 0.5);
+      let rolls = 0;
+      const lucky = () => (rolls++ % 2 ? 0.5 : 0.01); // hop whenever allowed
+      let t = 0;
+      let airborne = 0;
+      while (windStep(g, t, 1 / 60, lucky) && t < 5) {
+        t += 1 / 60;
+        if (g.air > 0) airborne++;
+      }
+      return airborne;
+    };
+    expect(hops(1.3)).toBeGreaterThan(0);
+    expect(hops(2.2)).toBe(0);
   });
 
   it("leaves grains behind the source, out of reach, outside the beam, or stuck alone", () => {
@@ -225,7 +274,7 @@ describe("wind", () => {
   });
 
   it("slides each grain downwind in a straight line, without shudder, then stops", () => {
-    const g = inBeam(60, 4);
+    const g = inBeam(60, 4, 1.3); // light, so it hops too
     startWind(g, ...from, ...dir, reach, () => 0.5);
     const [x0, y0] = [g.tx, g.ty];
     const heading = Math.atan2(g.wy, g.wx);

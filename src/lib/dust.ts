@@ -20,11 +20,13 @@ export interface Grain {
   gx: number;
   gy: number;
   delay: number;
-  /** While blown by wind: its velocity (px/s) and the wind's pull on it (px/s² at peak). */
+  /** While blown by wind: its velocity, the wind's velocity at it at the puff's peak
+   * (both px/s), and how many more seconds it is in the air mid-hop (0 on the ground). */
   vx: number;
   vy: number;
   wx: number;
   wy: number;
+  air: number;
   sz: number;
   a: number;
 }
@@ -45,6 +47,7 @@ export function makeGrain(tx: number, ty: number, stray: boolean, rnd: Rng = Mat
     vy: 0,
     wx: 0,
     wy: 0,
+    air: 0,
     sz: stray ? 1 : rnd() < 0.15 ? 2.2 : 1.3 + rnd() * 0.6,
     a: stray ? 0.4 + rnd() * 0.3 : 0.6 + rnd() * 0.4,
   };
@@ -95,18 +98,36 @@ export function gustAt(g: Grain, t: number): { x: number; y: number; done: boole
   };
 }
 
-/** Seconds the puff of wind blows for. Grains keep sliding a little after it stops. */
+// Sand on flat ground in a puff of wind: the air drags each grain toward its own speed,
+// the ground holds it back with friction (more to unstick a grain than to keep it
+// sliding, so it stops sharply), and light grains skip along in short hops (saltation).
+
+/** Seconds the puff of wind blows for. Grains slide on a moment after it stops. */
 export const WIND = 1.0;
-/** The puff's pull at its source, in px/s², on a grain of average weight. */
-const PULL = 330;
-/** A grain only moves if the wind pulls it harder than this (px/s²): sand sticks. */
-const STICK = 10;
+/** The puff's speed at the book, in px/s. */
+const WIND_SPEED = 90;
+/** Grains where the wind is slower than this (px/s) are left out of the puff entirely. */
+const CALM = 3;
 /** How sharply the puff weakens with distance from the book (1 = evenly). */
 const FADE = 1.6;
-/** Ground friction: how quickly a sliding grain loses speed (per second). */
-const FRICTION = 4;
-/** Below this speed (px/s), once the wind has died, a grain comes to rest. */
-const REST = 2;
+/** How strongly air drags an average grain toward the wind's speed (per second). */
+const DRAG = 6;
+/** Ground friction on a sliding grain (px/s²). */
+const FRICTION = 30;
+/** Unsticking a resting grain takes this many times the sliding friction. */
+const STATIC = 1.3;
+/** Grains lighter than this (px) can hop; heavier ones only slide. */
+const LIGHT = 1.5;
+/** A light grain moving at least this share of the wind's speed may leave the ground. */
+const HOP_SPEED = 0.5;
+/** Chance per second that such a grain hops. */
+const HOP_RATE = 5;
+/** Seconds a hop lasts, on average. */
+const HOP_TIME = 0.12;
+/** In the air the wind grips a grain this much harder (no ground under it). */
+const AIR_GRIP = 1.6;
+/** Share of its speed a grain keeps when it lands from a hop. */
+const LANDING = 0.55;
 /** How far either side of the wind's direction each grain may be pushed (radians). */
 const SCATTER = (20 * Math.PI) / 180;
 /** Half-width of the puff, in px, where it leaves the book. */
@@ -133,10 +154,10 @@ export function windStrength(t: number): number {
 
 /**
  * Catch a grain in a puff of wind leaving (ox, oy) along the unit direction (dx, dy) and
- * reaching `reach` px. The puff is a widening beam, strongest near its source and middle.
- * Each grain gets its own pull: a little off the wind's direction, a little stronger or
- * weaker, and weaker on heavier grains. Returns false (and leaves the grain alone) if it
- * lies outside the beam or the pull is too weak to unstick it.
+ * reaching `reach` px. The puff is a widening beam, fastest near its source and middle.
+ * Each grain feels its own gust: a little off the wind's direction and a little faster
+ * or slower. Returns false (and leaves the grain alone) if it lies outside the beam or
+ * the air there is practically still.
  */
 export function startWind(
   g: Grain,
@@ -154,20 +175,20 @@ export function startWind(
   const across = Math.abs(rx * dy - ry * dx);
   const halfWidth = MOUTH + along * SPREAD;
   if (across >= halfWidth) return false;
-  const weight = g.sz / 1.6;
   // Dies away quickly with distance, so the farthest sand barely stirs, and eases off
   // gently toward the sides so the wide beam still reaches its edges.
   const distance = (1 - along / reach) ** FADE;
   const side = 1 - (across / halfWidth) ** 2;
-  const pull = (PULL * distance * side * (0.6 + rnd() * 0.8)) / weight;
-  if (pull < STICK) return false;
+  const speed = WIND_SPEED * distance * side * (0.6 + rnd() * 0.8);
+  if (speed < CALM) return false;
   const turn = (rnd() * 2 - 1) * SCATTER;
   const c = Math.cos(turn);
   const s = Math.sin(turn);
-  g.wx = (dx * c - dy * s) * pull;
-  g.wy = (dx * s + dy * c) * pull;
+  g.wx = (dx * c - dy * s) * speed;
+  g.wy = (dx * s + dy * c) * speed;
   g.vx = 0;
   g.vy = 0;
+  g.air = 0;
   return true;
 }
 
@@ -197,20 +218,47 @@ export function puffFrom(width: number, height: number) {
 
 /**
  * Advance a grain caught in a puff of wind by `dt` seconds, `t` seconds after the puff
- * began: the wind pulls it (following the puff's strength), friction slows it, and it
- * slides along the ground. Returns false once it has come to rest.
+ * began. The air drags it toward the wind's speed (heavier grains respond less); on the
+ * ground, friction holds it back and stops it outright once it is slow; light, fast
+ * grains now and then hop, flying a moment with no friction and losing speed as they
+ * land. It always moves along one straight line. Returns false once it is at rest for
+ * good (the puff is over).
  */
-export function windStep(g: Grain, t: number, dt: number): boolean {
+export function windStep(g: Grain, t: number, dt: number, rnd: Rng = Math.random): boolean {
   const k = windStrength(t);
-  g.vx += g.wx * k * dt;
-  g.vy += g.wy * k * dt;
-  const keep = Math.exp(-FRICTION * dt);
-  g.vx *= keep;
-  g.vy *= keep;
-  if (k === 0 && t >= WIND && Math.hypot(g.vx, g.vy) < REST) {
-    g.vx = 0;
-    g.vy = 0;
-    return false;
+  const grip = DRAG / (g.sz / 1.6);
+  const fx = grip * (g.wx * k - g.vx);
+  const fy = grip * (g.wy * k - g.vy);
+  const speed = Math.hypot(g.vx, g.vy);
+  if (g.air > 0) {
+    g.vx += AIR_GRIP * fx * dt;
+    g.vy += AIR_GRIP * fy * dt;
+    g.air -= dt;
+    if (g.air <= 0) {
+      g.air = 0;
+      g.vx *= LANDING;
+      g.vy *= LANDING;
+    }
+  } else if (speed === 0) {
+    // Resting: only a strong enough push unsticks it.
+    if (Math.hypot(fx, fy) < FRICTION * STATIC) return t < WIND;
+    g.vx += fx * dt;
+    g.vy += fy * dt;
+  } else {
+    g.vx += fx * dt;
+    g.vy += fy * dt;
+    const v = Math.hypot(g.vx, g.vy);
+    const slow = FRICTION * dt;
+    if (v <= slow) {
+      g.vx = 0;
+      g.vy = 0;
+      return t < WIND;
+    }
+    g.vx -= (g.vx / v) * slow;
+    g.vy -= (g.vy / v) * slow;
+    if (g.sz < LIGHT && k > 0 && v > HOP_SPEED * Math.hypot(g.wx, g.wy) * k) {
+      if (rnd() < HOP_RATE * dt) g.air = HOP_TIME * (0.6 + rnd() * 0.8);
+    }
   }
   g.tx += g.vx * dt;
   g.ty += g.vy * dt;

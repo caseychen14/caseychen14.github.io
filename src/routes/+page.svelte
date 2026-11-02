@@ -9,8 +9,9 @@
 </script>
 
 <section class="hero">
-  <DustText lines={["Systems", "thinking"]} pattern={heroPattern} />
-  <p class="lead">Working on agentic architectures for institutional usage.</p>
+  <DustText lines={["Systems", "thinking"]} pattern={heroPattern}>
+    <p class="lead">Working on agentic architectures for institutional usage.</p>
+  </DustText>
 </section>
 
 {#if data.projects.length > 0}

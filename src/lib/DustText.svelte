@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, type Snippet } from "svelte";
   import fannerOpen from "./assets/fanner-open.png";
   import fannerRaised from "./assets/fanner-raised.png";
   import { scatterTiming } from "./glow";
@@ -24,11 +24,13 @@
   // puff of wind the way the book points. "Restore" then drags every grain home. With a
   // saved `pattern` for the same text, the dust lies in that drawing instead of plain
   // letters. Drawn on a canvas; the real heading sits beside it for screen readers.
+  // Anything passed in (the byline) sits under the words, on the figure's row.
   let {
     lines,
     spacing = 0.16,
     pattern,
-  }: { lines: string[]; spacing?: number; pattern?: DustPattern } = $props();
+    children,
+  }: { lines: string[]; spacing?: number; pattern?: DustPattern; children?: Snippet } = $props();
 
   const COLORS = ["205,165,124", "192,144,104", "222,190,150", "176,132,92"];
   const MAX_SIZE = 132;
@@ -39,6 +41,8 @@
   // left of that box (rotating 30° about the bench swings the book's corner out).
   const FIGURE_WIDTH = 68;
   const FIGURE_REACH = 38;
+  // Space between the bottom of the words and the figure's row (matches .foot's margin).
+  const FOOT_GAP = 8;
   // The wind physics runs in steps of this many seconds, at most MAX_STEPS per frame
   // (two seconds' worth, so a long stall can't freeze the page catching up).
   const STEP = 1 / 120;
@@ -96,8 +100,6 @@
     let buckets: Grain[][] = [];
     let width = 0;
     let height = 0;
-    // The right edge of the figure's box, measured from the left (px).
-    let figureRight = 0;
     let raf = 0;
     // A gust dragging grains home: when it began, which grains, when the last arrives.
     let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
@@ -181,7 +183,6 @@
       // text size); take it off so the figure meets the "g" itself.
       const inkRight = textRight - size * 0.12;
       figurePad = Math.max(0, W - (inkRight + FIGURE_REACH + FIGURE_WIDTH));
-      figureRight = W - figurePad;
       restoreInset = W - Math.min(W, lineWidth(lines[0]!, MAX_SIZE) * scale);
     }
 
@@ -249,8 +250,13 @@
     // grains still moving from the first keep their momentum.
     puff = () => {
       if (gust || !buckets.length) return;
-      // From the figure's book, wherever the figure sits.
-      const p = puffFrom(figureRight, height);
+      // From the figure's book, wherever the figure actually sits (on narrow screens it
+      // wraps below the byline), measured from its layout box, in the words' coordinates.
+      const c = cv.getBoundingClientRect();
+      const row = fanner!.parentElement!.getBoundingClientRect();
+      const boxRight = row.left + fanner!.offsetLeft + FIGURE_WIDTH - (c.left + BLEED);
+      const boxTop = row.top + fanner!.offsetTop - (c.top + BLEED);
+      const p = puffFrom(boxRight, boxTop - FOOT_GAP);
       const caught = buckets.flat().filter((g) => startWind(g, p.ox, p.oy, p.dx, p.dy, p.reach));
       if (!caught.length) return;
       drawn = true;
@@ -339,6 +345,7 @@
   </button>
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
   <div class="foot" style:padding-right="{figurePad}px">
+    {@render children?.()}
     <button
       bind:this={fanner}
       type="button"
@@ -362,15 +369,25 @@
     position: relative;
   }
   /* Above the canvas, whose faded bleed reaches under it. */
+  /* The byline and the figure share a row under the words. When there isn't room for
+     both (phones), the row wraps and the figure drops below the byline, staying right.
+     The column gap keeps text clear of the leaning figure's reach (FIGURE_REACH). */
   .foot {
     position: relative;
     z-index: 1;
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 16px 46px;
     margin-top: 8px;
+  }
+  .foot > :global(:not(.fanner)) {
+    flex: 1 1 260px;
+    min-width: 0;
   }
   /* The two drawings are scaled so their benches match, then lined up on the bench. */
   .fanner {
+    margin-left: auto;
     position: relative;
     width: 68px;
     height: 88px;

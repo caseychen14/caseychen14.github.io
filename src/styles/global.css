@@ -28,9 +28,9 @@
     var(--sky) 100%
   );
 
-  --name: Forum, Georgia, serif;
   --display: "Red Hat Display", system-ui, sans-serif;
-  --text: Inter, system-ui, sans-serif;
+  /* Body text; the name, headings, labels and the hero use Red Hat Display. */
+  --text: "Ysabeau Office", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --max: 960px;
   color-scheme: dark;
@@ -151,7 +151,8 @@ p {
   }
 }
 .label {
-  font-family: var(--mono);
+  font-family: var(--display);
+  font-weight: 500;
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -196,17 +197,22 @@ p {
   padding-top: 40px;
   padding-bottom: 40px;
 }
-/* The name: Forum, a light inscriptional serif, as if carved. Used nowhere else. */
+/* The name: big and bold, in the hero's typeface. */
 .brand {
-  font-family: var(--name);
-  font-size: 26px;
-  letter-spacing: 0.02em;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
   color: var(--earth);
 }
 .brand.g3 {
   color: transparent;
 }
+/* The nav keeps its monospace labels. */
 .nav nav {
+  font-family: var(--mono);
+  font-weight: 400;
   display: flex;
   flex-wrap: wrap;
   gap: 36px;

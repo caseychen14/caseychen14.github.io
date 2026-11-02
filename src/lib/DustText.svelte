@@ -5,18 +5,23 @@
     grainAt,
     letterAt,
     makeGrain,
+    plough,
     settleTime,
     type Grain,
     type Letter,
   } from "./dust";
 
   // The page's hero: words that form out of dust once, then stay. The dust waits in
-  // clumps until the visitor's first input (move, tap, key, scroll). Drawn on a canvas;
-  // the real heading sits beside it for screen readers and search.
+  // clumps until the visitor's first input (move, tap, key, scroll). Dragging across it
+  // draws in the dirt: grains are pushed aside into ridges and the marks stay. Drawn on
+  // a canvas; the real heading sits beside it for screen readers and search.
   let { lines, spacing = 0.16 }: { lines: string[]; spacing?: number } = $props();
 
   const COLORS = ["205,165,124", "192,144,104", "222,190,150", "176,132,92"];
-  const TRAIL = "rgba(27,38,30,0.35)";
+  // Each frame erases 35% of what's on the canvas, so moving grains leave short trails.
+  // Erasing (rather than painting the ground color) keeps the canvas transparent, so
+  // the page background never shifts while the animation runs.
+  const TRAIL_FADE = "rgba(0,0,0,0.35)";
   const MAX_SIZE = 132;
 
   let canvas: HTMLCanvasElement | undefined = $state();
@@ -107,14 +112,17 @@
     }
 
     function frame() {
+      raf = 0;
       const s = elapsed();
       const done = s >= tEnd;
       ctx.globalAlpha = 1;
       if (done || waiting) {
         ctx.clearRect(0, 0, width, height);
       } else {
-        ctx.fillStyle = TRAIL;
+        ctx.globalCompositeOperation = "destination-out";
+        ctx.fillStyle = TRAIL_FADE;
         ctx.fillRect(0, 0, width, height);
+        ctx.globalCompositeOperation = "source-over";
       }
       buckets.forEach((grains, i) => {
         ctx.fillStyle = `rgb(${COLORS[i]})`;
@@ -132,6 +140,33 @@
       build();
       frame();
     }
+
+    // Drawing in the dirt. Slow strokes cut deep and wide, quick ones leave a scratch.
+    let last: [number, number] | null = null;
+    function onPointerDown(e: PointerEvent) {
+      if (!buckets.length) return; // not drawn yet (fonts still loading)
+      cv.setPointerCapture(e.pointerId);
+      last = [e.offsetX, e.offsetY];
+    }
+    function onPointerMove(e: PointerEvent) {
+      if (!last) return;
+      const p: [number, number] = [e.offsetX, e.offsetY];
+      const speed = Math.hypot(p[0] - last[0], p[1] - last[1]);
+      if (speed < 1.5) return;
+      const w = Math.max(3.5, Math.min(9, 10 - speed * 0.35));
+      let moved = 0;
+      for (const grains of buckets) moved += plough(grains, last, p, w);
+      last = p;
+      // While the arrival is still running its next frame picks this up.
+      if (moved && !raf) frame();
+    }
+    function onPointerUp() {
+      last = null;
+    }
+    cv.addEventListener("pointerdown", onPointerDown);
+    cv.addEventListener("pointermove", onPointerMove);
+    cv.addEventListener("pointerup", onPointerUp);
+    cv.addEventListener("pointercancel", onPointerUp);
 
     const WAKE_EVENTS = ["pointerdown", "pointermove", "keydown", "wheel", "touchstart", "scroll"];
     function stopListening() {
@@ -167,6 +202,10 @@
       cancelAnimationFrame(raf);
       resize.disconnect();
       stopListening();
+      cv.removeEventListener("pointerdown", onPointerDown);
+      cv.removeEventListener("pointermove", onPointerMove);
+      cv.removeEventListener("pointerup", onPointerUp);
+      cv.removeEventListener("pointercancel", onPointerUp);
     };
   });
 </script>
@@ -178,5 +217,8 @@
   canvas {
     display: block;
     width: 100%;
+    cursor: crosshair;
+    /* Sideways drags draw; vertical swipes still scroll the page on touch screens. */
+    touch-action: pan-y;
   }
 </style>

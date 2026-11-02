@@ -35,6 +35,10 @@
   // The canvas reaches this far (px) past the words on every side and fades out there, so
   // blown sand drifts off softly instead of being cut off at a hard edge. Matches the CSS.
   const BLEED = 48;
+  // The figure's button box (matches .fanner) and how far its leaning drawing reaches
+  // left of that box (rotating 30° about the bench swings the book's corner out).
+  const FIGURE_WIDTH = 68;
+  const FIGURE_REACH = 38;
   // The wind physics runs in steps of this many seconds, at most MAX_STEPS per frame
   // (two seconds' worth, so a long stall can't freeze the page catching up).
   const STEP = 1 / 120;
@@ -44,10 +48,12 @@
   let fanner: HTMLButtonElement | undefined = $state();
   // Whether the sand has been moved since load (or since the last gust); shows the button.
   let drawn = $state(false);
-  // How far (px) the words stop short of the canvas's right edge. On wide screens the
-  // words reach their largest size and stop growing, so the figure is moved in by this
-  // much to stay beside the last letter.
-  let textInset = $state(0);
+  // Placement worked out from where the words actually end (on wide screens they reach
+  // their largest size and stop growing): space to the right of the figure, so its left
+  // edge meets the end of the "g", and Restore's distance from the right, so it sits
+  // above the end of the first line.
+  let figurePad = $state(0);
+  let restoreInset = $state(0);
   let blowBack: (() => void) | undefined = $state();
   let puff: (() => void) | undefined = $state();
   // The figure's book: false = raised, true = fanned open.
@@ -90,8 +96,8 @@
     let buckets: Grain[][] = [];
     let width = 0;
     let height = 0;
-    // Where the words end, measured from the left (px).
-    let textRight = 0;
+    // The right edge of the figure's box, measured from the left (px).
+    let figureRight = 0;
     let raf = 0;
     // A gust dragging grains home: when it began, which grains, when the last arrives.
     let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
@@ -167,8 +173,16 @@
       ctx.setTransform(dpr, 0, 0, dpr, BLEED * dpr, BLEED * dpr);
       width = W;
       height = H;
-      textRight = Math.min(W, widest * (size / MAX_SIZE));
-      textInset = W - textRight;
+      const scale = size / MAX_SIZE;
+      const textRight = Math.min(W, widest * scale);
+      // Leaning, the figure reaches FIGURE_REACH px left of its box; on narrow screens,
+      // where the words fill the width, it stays inside the column, tucked under the "g".
+      // The font's width includes a little space after the last letter (about 0.12 of the
+      // text size); take it off so the figure meets the "g" itself.
+      const inkRight = textRight - size * 0.12;
+      figurePad = Math.max(0, W - (inkRight + FIGURE_REACH + FIGURE_WIDTH));
+      figureRight = W - figurePad;
+      restoreInset = W - Math.min(W, lineWidth(lines[0]!, MAX_SIZE) * scale);
     }
 
     function draw() {
@@ -235,8 +249,8 @@
     // grains still moving from the first keep their momentum.
     puff = () => {
       if (gust || !buckets.length) return;
-      // From the figure beside the last letter, wherever the words end.
-      const p = puffFrom(textRight, height);
+      // From the figure's book, wherever the figure sits.
+      const p = puffFrom(figureRight, height);
       const caught = buckets.flat().filter((g) => startWind(g, p.ox, p.oy, p.dx, p.dy, p.reach));
       if (!caught.length) return;
       drawn = true;
@@ -314,12 +328,17 @@
 
 <h1 class="sr-only">{lines.join(" ")}</h1>
 <div class="dust">
-  <!-- Floats above the top-right of the words so showing it never shifts the page. -->
-  <button type="button" class={["link g3 blow", drawn && "shown"]} onclick={() => blowBack?.()}>
+  <!-- Floats above the end of "Systems" so showing it never shifts the page. -->
+  <button
+    type="button"
+    class={["link g3 blow", drawn && "shown"]}
+    style:right="{restoreInset}px"
+    onclick={() => blowBack?.()}
+  >
     Restore
   </button>
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
-  <div class="foot" style:padding-right="{textInset}px">
+  <div class="foot" style:padding-right="{figurePad}px">
     <button
       bind:this={fanner}
       type="button"

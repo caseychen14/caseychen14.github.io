@@ -29,7 +29,7 @@
   );
 
   --display: "Red Hat Display", system-ui, sans-serif;
-  /* Body text and the name; headings, labels and the hero use Red Hat Display. */
+  /* Body text; the name, headings, labels and the hero use Red Hat Display. */
   --text: "Ysabeau Office", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --max: 960px;
@@ -197,9 +197,9 @@ p {
   padding-top: 40px;
   padding-bottom: 40px;
 }
-/* The name: big and bold, in the body typeface. */
+/* The name: big and bold, in the hero's typeface. */
 .brand {
-  font-family: var(--text);
+  font-family: var(--display);
   font-weight: 700;
   font-size: 32px;
   line-height: 1.1;

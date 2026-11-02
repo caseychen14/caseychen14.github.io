@@ -19,11 +19,29 @@ npm run lint && npm run format:check && npm run check && npm test && npm run bui
 
 ## Edit
 
-- `src/routes/+page.svelte` — homepage sections (About, Experience, Contact).
-- `src/routes/+layout.svelte` — shared head, nav, and footer.
+- `src/routes/+page.svelte` — homepage: dust hero and selected work.
+- `src/routes/experience/`, `projects/`, `contact/` — the other pages.
+- `src/routes/+layout.svelte` — shared head, nav, footer, and the `#dust` filter.
 - `src/routes/projects/[slug]/+page.svelte` — the per-project page.
 - `src/lib/content.ts` — loads and validates project Markdown.
-- `src/styles/global.css` — theme colors live in `:root` at the top.
+- `src/lib/DustText.svelte` + `src/lib/dust.ts` — the hero animation (motion is unit-tested).
+- `src/styles/global.css` — design tokens live in `:root` at the top.
+
+## Design system
+
+Every piece of text speaks in one of two voices ([ADR 0003](docs/adr/0003-dirt-and-glow-design-system.md)).
+
+| Term       | Meaning                                                                                       | Use it via                         |
+| ---------- | --------------------------------------------------------------------------------------------- | ---------------------------------- |
+| **Ground** | The dark sage page color under both voices.                                                   | `--ground`, `--furrow`             |
+| **Dirt**   | What is said. Matte, still, earth colors. Headings get grit; body text is plain.              | `.dirt` (32px and up), `.muted`    |
+| **Glow**   | Where things are and what you can do. Lit with a slow light sweep.                            | `.g2` (labels, nav), `.g3` (links) |
+| **Lamp**   | The glow color for passive labels: dates, venues, nav.                                        | `.label.g2`                        |
+| **Sky**    | The glow color for action and structure: links, buttons, current page, focus, timeline nodes. | `.g3`, `.button`                   |
+| **Clay**   | The dirt color for tags.                                                                      | `.chip`                            |
+
+Rules: one voice per element; dirt is still and only glow moves; most words are dirt; hovering a dirt
+title lights a glow arrow (`.tlink`); corners are square; reduced motion stops every animation.
 
 ## Add a paper, poster, or project
 

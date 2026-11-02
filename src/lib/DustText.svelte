@@ -20,8 +20,8 @@
 
   // The page's hero: words made of loose dust on the ground. Dragging across it draws in
   // the dirt: grains are pushed aside into ridges and the marks stay. The little figure
-  // at the bottom right fans its book when clicked, sending a puff of wind from that
-  // corner that scatters nearby sand. "Blow it back" then drags every grain home. With a
+  // at the bottom right, leaning 20° to the left, fans its book when clicked, sending a
+  // puff of wind the way the book points. "Restore" then drags every grain home. With a
   // saved `pattern` for the same text, the dust lies in that drawing instead of plain
   // letters. Drawn on a canvas; the real heading sits beside it for screen readers.
   let {
@@ -41,24 +41,21 @@
   let puff: (() => void) | undefined = $state();
   // The figure's book: false = raised, true = fanned open.
   let bookOpen = $state(false);
-  let fanning = false;
 
-  // Flap the book open and shut twice; the wind leaves on the first flap.
+  // The figure leans this far counter-clockwise; its book, and so the wind, points the
+  // same way: up and to the left.
+  const LEAN = (20 * Math.PI) / 180;
+  const WIND_DIR = [-Math.sin(LEAN), -Math.cos(LEAN)] as const;
+  // Where the book sits, relative to the canvas's bottom-right corner, once leaned.
+  const BOOK_OFFSET = [-63, 26] as const;
+
+  // Fan the book open for half a second and back; the wind leaves as it opens.
   function fan() {
-    if (fanning) return;
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      puff?.();
-      return;
-    }
-    fanning = true;
-    const flaps = [true, false, true, false];
-    flaps.forEach((open, i) =>
-      setTimeout(() => {
-        bookOpen = open;
-        if (i === 0) puff?.();
-        if (i === flaps.length - 1) fanning = false;
-      }, i * 140),
-    );
+    if (bookOpen) return;
+    puff?.();
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    bookOpen = true;
+    setTimeout(() => (bookOpen = false), 500);
   }
 
   onMount(() => {
@@ -207,11 +204,13 @@
       move(moving, gustAt, GUST);
     };
 
-    // A light puff of wind from the bottom-right corner, where the figure sits.
+    // A puff of wind from the figure's book, blowing the way it points.
     puff = () => {
       if (motion || !buckets.length) return;
-      const reach = Math.hypot(width, height) * 0.6;
-      const caught = buckets.flat().filter((g) => startWind(g, width, height, reach));
+      const ox = width + BOOK_OFFSET[0];
+      const oy = height + BOOK_OFFSET[1];
+      const reach = height * 1.6;
+      const caught = buckets.flat().filter((g) => startWind(g, ox, oy, ...WIND_DIR, reach));
       if (!caught.length) return;
       drawn = true;
       move(caught, windAt, WIND);
@@ -279,7 +278,7 @@
 <div class="dust">
   <!-- Floats above the top-right of the words so showing it never shifts the page. -->
   <button type="button" class={["link g3 blow", drawn && "shown"]} onclick={() => blowBack?.()}>
-    Blow it back
+    Restore
   </button>
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
   <div class="foot">
@@ -320,6 +319,9 @@
     background: none;
     cursor: pointer;
     filter: drop-shadow(0 0 8px rgb(143 178 222 / 0.45));
+    /* Leaning 20° counter-clockwise, pivoting on the bench (see LEAN in the script). */
+    transform: rotate(-20deg);
+    transform-origin: 62% 100%;
   }
   .frame {
     position: absolute;

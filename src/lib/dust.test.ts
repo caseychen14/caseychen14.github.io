@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   GUST,
   WIND,
+  adsr,
   displaced,
   gustAt,
   makeGrain,
@@ -150,46 +151,81 @@ describe("gust", () => {
   });
 });
 
-describe("wind from a corner", () => {
-  // A 600×300 canvas with the puff coming from its bottom-right corner.
-  const corner = [600, 300] as const;
-  const reach = 400;
-
-  it("pushes nearby grains away from the corner", () => {
-    const g = makeGrain(560, 270, false);
-    expect(startWind(g, ...corner, reach, () => 0.5)).toBe(true);
-    const before = Math.hypot(g.fx - corner[0], g.fy - corner[1]);
-    const after = Math.hypot(g.gx - corner[0], g.gy - corner[1]);
-    expect(after).toBeGreaterThan(before);
+describe("adsr", () => {
+  it("starts at 0, ends at 1, and never goes backward", () => {
+    expect(adsr(0)).toBe(0);
+    expect(adsr(1)).toBeCloseTo(1, 10);
+    let prev = 0;
+    for (let u = 0.01; u <= 1; u += 0.01) {
+      expect(adsr(u)).toBeGreaterThanOrEqual(prev);
+      prev = adsr(u);
+    }
   });
 
-  it("pushes grains less the further they are from the corner", () => {
-    const near = makeGrain(570, 280, false);
-    const far = makeGrain(350, 150, false);
-    startWind(near, ...corner, reach, () => 0.5);
-    startWind(far, ...corner, reach, () => 0.5);
-    const moved = (g: typeof near) => Math.hypot(g.gx - g.fx, g.gy - g.fy);
+  it("speeds up, eases to a steady drift, then comes to rest", () => {
+    const speed = (u: number) => (adsr(u + 0.005) - adsr(u - 0.005)) / 0.01;
+    expect(speed(0.05)).toBeLessThan(speed(0.14)); // attack: building
+    expect(speed(0.14)).toBeGreaterThan(speed(0.5)); // decay: easing off the peak
+    expect(speed(0.4)).toBeCloseTo(speed(0.6), 5); // sustain: steady
+    expect(speed(0.95)).toBeLessThan(speed(0.6)); // release: slowing to rest
+  });
+});
+
+describe("wind", () => {
+  // Blowing up and to the left, 20° counter-clockwise from straight up, from (600, 300).
+  const angle = (20 * Math.PI) / 180;
+  const dir = [-Math.sin(angle), -Math.cos(angle)] as const;
+  const from = [600, 300] as const;
+  const reach = 500;
+  const inBeam = (along: number, across = 0) =>
+    makeGrain(
+      from[0] + dir[0] * along - dir[1] * across,
+      from[1] + dir[1] * along + dir[0] * across,
+      false,
+    );
+
+  it("pushes grains in the beam straight along the wind", () => {
+    const g = inBeam(100, 10);
+    expect(startWind(g, ...from, ...dir, reach)).toBe(true);
+    const mx = g.gx - g.fx;
+    const my = g.gy - g.fy;
+    expect(Math.hypot(mx, my)).toBeGreaterThan(0);
+    expect(mx * dir[1] - my * dir[0]).toBeCloseTo(0, 10); // parallel to the wind
+    expect(mx * dir[0] + my * dir[1]).toBeGreaterThan(0); // downwind
+  });
+
+  it("pushes less further from the source and further from the middle of the beam", () => {
+    const moved = (g: ReturnType<typeof inBeam>) => Math.hypot(g.gx - g.fx, g.gy - g.fy);
+    const near = inBeam(50);
+    const far = inBeam(300);
+    const edge = inBeam(50, 50);
+    for (const g of [near, far, edge]) startWind(g, ...from, ...dir, reach);
     expect(moved(near)).toBeGreaterThan(moved(far));
+    expect(moved(near)).toBeGreaterThan(moved(edge));
   });
 
-  it("leaves grains out of reach alone", () => {
-    const g = makeGrain(20, 20, false);
-    expect(startWind(g, ...corner, reach)).toBe(false);
-    expect([g.gx, g.gy]).toEqual([20, 20]);
+  it("leaves grains behind the source, past its reach or outside the beam alone", () => {
+    for (const g of [inBeam(-20), inBeam(reach + 10), inBeam(100, 200)]) {
+      expect(startWind(g, ...from, ...dir, reach)).toBe(false);
+      expect([g.gx, g.gy]).toEqual([g.tx, g.ty]);
+    }
   });
 
-  it("reaches distant grains later, like a front spreading from the corner", () => {
-    const near = makeGrain(580, 290, false);
-    const far = makeGrain(400, 200, false);
-    startWind(near, ...corner, reach, () => 0.5);
-    startWind(far, ...corner, reach, () => 0.5);
-    expect(far.delay).toBeGreaterThan(near.delay);
+  it("hits every grain at the same moment", () => {
+    const grains = [inBeam(30), inBeam(250, 20), inBeam(450)];
+    for (const g of grains) startWind(g, ...from, ...dir, reach);
+    expect(grains.map((g) => g.delay)).toEqual([0, 0, 0]);
   });
 
-  it("settles each grain exactly where the wind left it, displaced from home", () => {
-    const g = makeGrain(560, 270, false);
-    startWind(g, ...corner, reach, () => 0.5);
-    expect(windAt(g, g.delay + WIND)).toEqual({ x: g.gx, y: g.gy, done: true });
+  it("moves each grain in a straight line, with no shudder, and leaves it displaced", () => {
+    const g = inBeam(80, 5);
+    startWind(g, ...from, ...dir, reach);
+    for (const u of [0.1, 0.3, 0.6, 0.9]) {
+      const p = windAt(g, WIND * u);
+      const off = (p.x - g.fx) * (g.gy - g.fy) - (p.y - g.fy) * (g.gx - g.fx);
+      expect(off).toBeCloseTo(0, 8); // on the line from start to goal
+    }
+    expect(windAt(g, WIND)).toEqual({ x: g.gx, y: g.gy, done: true });
     g.tx = g.gx;
     g.ty = g.gy;
     expect(displaced(g)).toBe(true);

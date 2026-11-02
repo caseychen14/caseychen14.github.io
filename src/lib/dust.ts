@@ -86,53 +86,90 @@ export function gustAt(g: Grain, t: number): { x: number; y: number; done: boole
   };
 }
 
-/** Seconds a puff of wind takes to settle each grain it moves. */
-export const WIND = 0.8;
-/** How far, in px, the puff pushes a grain right beside the corner it comes from. */
-const PUSH = 26;
+/** Seconds a puff of wind moves the sand for. */
+export const WIND = 1.2;
+/** How far, in px, the puff pushes a grain right at its source. */
+const PUSH = 30;
+/** Half-width of the puff, in px, where it leaves the book. */
+const MOUTH = 40;
+/** How much the puff widens per px travelled (tan of its half-angle, about 30°). */
+const SPREAD = Math.tan((30 * Math.PI) / 180);
+
+// The puff's speed envelope: phase boundaries as fractions of WIND, and the steady
+// drift speed during sustain relative to the peak.
+const ATTACK = 0.15;
+const DECAY = 0.3;
+const SUSTAIN = 0.6;
+const RELEASE = 0.75;
+const AREAS = [
+  ATTACK / 2,
+  ((DECAY - ATTACK) * (1 + SUSTAIN)) / 2,
+  (RELEASE - DECAY) * SUSTAIN,
+  ((1 - RELEASE) * SUSTAIN) / 2,
+];
+const TOTAL = AREAS.reduce((a, b) => a + b, 0);
 
 /**
- * Catch a grain in a light puff of wind from the point (cx, cy), reaching `reach` px:
- * grains nearby are pushed away from it, less the further off they lie, and the puff
- * reaches distant grains later. Returns false (and leaves the grain alone) if out of reach.
+ * Progress along a puff's path, shaped like a sound envelope: attack (speed builds to a
+ * peak), decay (eases to a steady drift), sustain (drifts), release (comes to rest).
+ * `u` is the fraction of the puff elapsed; returns the fraction of the path covered.
+ */
+export function adsr(u: number): number {
+  const c = Math.max(0, Math.min(1, u));
+  let area: number;
+  if (c < ATTACK) {
+    area = (c * c) / (2 * ATTACK);
+  } else if (c < DECAY) {
+    const x = c - ATTACK;
+    area = AREAS[0]! + x - ((1 - SUSTAIN) * x * x) / (2 * (DECAY - ATTACK));
+  } else if (c < RELEASE) {
+    area = AREAS[0]! + AREAS[1]! + (c - DECAY) * SUSTAIN;
+  } else {
+    const x = c - RELEASE;
+    area = TOTAL - AREAS[3]! + SUSTAIN * x - (SUSTAIN * x * x) / (2 * (1 - RELEASE));
+  }
+  return area / TOTAL;
+}
+
+/**
+ * Catch a grain in a puff of wind leaving (ox, oy) along the unit direction (dx, dy) and
+ * reaching `reach` px. The puff is a widening beam: grains inside it are pushed straight
+ * along the wind, more near its source and its middle. Every caught grain starts moving at
+ * once. Returns false (and leaves the grain alone) if it lies outside the beam.
  */
 export function startWind(
   g: Grain,
-  cx: number,
-  cy: number,
+  ox: number,
+  oy: number,
+  dx: number,
+  dy: number,
   reach: number,
-  rnd: Rng = Math.random,
 ): boolean {
-  const dx = g.tx - cx;
-  const dy = g.ty - cy;
-  const d = Math.hypot(dx, dy);
-  if (d >= reach) return false;
-  const falloff = (1 - d / reach) ** 1.5;
-  const push = PUSH * falloff * (0.6 + rnd() * 0.8);
-  // Away from the corner, give or take a little, so the sand fans out.
-  const angle = Math.atan2(dy, dx) + (rnd() - 0.5) * 0.6;
+  const rx = g.tx - ox;
+  const ry = g.ty - oy;
+  const along = rx * dx + ry * dy;
+  if (along <= 0 || along >= reach) return false;
+  const across = Math.abs(rx * dy - ry * dx);
+  const halfWidth = MOUTH + along * SPREAD;
+  if (across >= halfWidth) return false;
+  const push = PUSH * (1 - along / reach) * (1 - across / halfWidth);
   g.fx = g.tx;
   g.fy = g.ty;
-  g.gx = g.tx + Math.cos(angle) * push;
-  g.gy = g.ty + Math.sin(angle) * push;
-  g.delay = (d / reach) * 0.6 + rnd() * 0.08;
+  g.gx = g.tx + dx * push;
+  g.gy = g.ty + dy * push;
+  g.delay = 0;
   return true;
 }
 
 /**
- * Where a grain caught in a puff of wind is, `t` seconds after the puff began: skittering
- * quickly at first, slowing as the air dies, with a slight flutter, and resting at the end.
+ * Where a grain caught in a puff of wind is, `t` seconds after the puff began: moving in
+ * a straight line toward where the wind leaves it, with the puff's speed envelope.
  */
 export function windAt(g: Grain, t: number): { x: number; y: number; done: boolean } {
-  const u = Math.max(0, Math.min(1, (t - g.delay) / WIND));
+  const u = (t - g.delay) / WIND;
   if (u >= 1) return { x: g.gx, y: g.gy, done: true };
-  const e = 1 - (1 - u) ** 3;
-  const flutter = 0.8 * Math.sin(Math.PI * u) * Math.sin(t * 38 + g.fx);
-  return {
-    x: g.fx + (g.gx - g.fx) * e + flutter,
-    y: g.fy + (g.gy - g.fy) * e - flutter,
-    done: false,
-  };
+  const e = adsr(u);
+  return { x: g.fx + (g.gx - g.fx) * e, y: g.fy + (g.gy - g.fy) * e, done: false };
 }
 
 /**

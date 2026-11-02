@@ -164,23 +164,6 @@ p {
   font-weight: 500;
   font-size: 15px;
 }
-.button {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
-  padding: 0 22px;
-  background: var(--sky);
-  color: var(--ground);
-  border-radius: 2px;
-  font-family: var(--display);
-  font-weight: 600;
-  font-size: 15px;
-  box-shadow: 0 0 28px rgb(143 178 222 / 0.28);
-  transition: background 0.2s;
-}
-.button:hover {
-  background: var(--sky-light);
-}
 /* Touch turns things to light: a dirt title stays dirt, a glow arrow appears. */
 .tlink {
   display: inline-flex;
@@ -258,12 +241,6 @@ main {
   flex-direction: column;
   gap: 40px;
   padding: 120px 0 160px;
-}
-.actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  align-items: center;
 }
 .page-head {
   display: flex;
@@ -416,8 +393,7 @@ main {
     animation: none;
     background-position: 50% 0;
   }
-  .tlink .arr,
-  .button {
+  .tlink .arr {
     transition: none;
   }
 }

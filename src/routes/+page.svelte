@@ -9,10 +9,6 @@
 <section class="hero">
   <DustText lines={["Systems", "thinking"]} />
   <p class="lead">Working on agentic architectures for institutional usage.</p>
-  <div class="actions">
-    <a class="button" href={resolve("/projects")}>See projects</a>
-    <a class="link g3" href={resolve("/contact")}>Get in touch →</a>
-  </div>
 </section>
 
 {#if data.projects.length > 0}

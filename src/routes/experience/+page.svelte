@@ -19,8 +19,15 @@
   <li>
     <div class="rail" aria-hidden="true"><span class="node"></span><span class="line"></span></div>
     <div class="entry">
-      <p class="label g2">September 2023 — Present. September 2026 — Present</p>
-      <h2>BS Symbolic Systems. MS Computer Science · Stanford University</h2>
+      <p class="label g2">September 2026 — Present</p>
+      <h2>MS Computer Science · Stanford University</h2>
+    </div>
+  </li>
+  <li>
+    <div class="rail" aria-hidden="true"><span class="node"></span><span class="line"></span></div>
+    <div class="entry">
+      <p class="label g2">September 2023 — Present.</p>
+      <h2>BS Symbolic Systems · Stanford University</h2>
     </div>
   </li>
 </ol>

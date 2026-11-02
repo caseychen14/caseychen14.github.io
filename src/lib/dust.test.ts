@@ -7,6 +7,7 @@ import {
   letterAt,
   makeGrain,
   normal,
+  patternPoints,
   plough,
   settleTime,
   type Letter,
@@ -165,5 +166,26 @@ describe("plough", () => {
     const settled = grainAt(g, Infinity);
     expect([settled.x, settled.y]).toEqual([g.tx, g.ty]);
     expect(Math.abs(settled.y - 100)).toBeGreaterThan(8);
+  });
+});
+
+describe("patternPoints", () => {
+  it("decodes one bit per cell, row by row, into cell centers", () => {
+    // 4×2 grid of 2px cells; bits 0 and 5 set → byte 0b00100001 = 33 = "IQ==".
+    const p = { text: "x", width: 8, height: 4, cell: 2, cols: 4, rows: 2, bits: "IQ==" };
+    expect(patternPoints(p)).toEqual([
+      [1, 1],
+      [3, 3],
+    ]);
+  });
+
+  it("reads the saved hero pattern", async () => {
+    const saved = (await import("./assets/hero-pattern.json")).default;
+    const points = patternPoints(saved);
+    expect(points).toHaveLength(6856);
+    for (const [x, y] of points) {
+      expect(x).toBeLessThan(saved.width + saved.cell);
+      expect(y).toBeLessThan(saved.height + saved.cell);
+    }
   });
 });

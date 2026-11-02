@@ -181,3 +181,29 @@ export function plough(
   }
   return moved;
 }
+
+/**
+ * A drawing saved from the hero: which cells of a grid laid over the canvas held dust,
+ * captured at `width` CSS px. `bits` is base64 of one bit per cell, row by row.
+ */
+export interface DustPattern {
+  text: string;
+  width: number;
+  height: number;
+  cell: number;
+  cols: number;
+  rows: number;
+  bits: string;
+}
+
+/** The centers (CSS px, at the captured width) of every cell in the pattern that held dust. */
+export function patternPoints(p: DustPattern): Array<[number, number]> {
+  const bytes = atob(p.bits);
+  const points: Array<[number, number]> = [];
+  for (let k = 0; k < p.cols * p.rows; k++) {
+    if (bytes.charCodeAt(k >> 3) & (1 << (k & 7))) {
+      points.push([((k % p.cols) + 0.5) * p.cell, (Math.floor(k / p.cols) + 0.5) * p.cell]);
+    }
+  }
+  return points;
+}

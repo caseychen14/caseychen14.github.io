@@ -5,8 +5,10 @@
     grainAt,
     letterAt,
     makeGrain,
+    patternPoints,
     plough,
     settleTime,
+    type DustPattern,
     type Grain,
     type Letter,
   } from "./dust";
@@ -15,7 +17,13 @@
   // clumps until the visitor's first input (move, tap, key, scroll). Dragging across it
   // draws in the dirt: grains are pushed aside into ridges and the marks stay. Drawn on
   // a canvas; the real heading sits beside it for screen readers and search.
-  let { lines, spacing = 0.16 }: { lines: string[]; spacing?: number } = $props();
+  // With a saved `pattern` for the same text, the dust forms into that drawing instead
+  // of plain letters.
+  let {
+    lines,
+    spacing = 0.16,
+    pattern,
+  }: { lines: string[]; spacing?: number; pattern?: DustPattern } = $props();
 
   const COLORS = ["205,165,124", "192,144,104", "222,190,150", "176,132,92"];
   // Each frame erases 35% of what's on the canvas, so moving grains leave short trails.
@@ -79,17 +87,33 @@
 
       const lineOf = (py: number) =>
         Math.min(lines.length - 1, Math.max(0, Math.floor((py - size * 1.2) / (size * 1.15)) + 1));
-      const jitter = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
-      const data = c.getImageData(0, 0, W, H).data;
       buckets = COLORS.map(() => []);
-      for (let y = 0; y < H; y += 2) {
-        for (let x = 0; x < W; x += 2) {
-          if (data[(y * W + x) * 4 + 3]! < 128 || Math.random() > 0.6) continue;
-          const stray = Math.random() < 0.05;
-          const tx = x + jitter() * (stray ? 7 : 0.8);
-          const ty = y + jitter() * (stray ? 7 : 0.8);
-          const grain = makeGrain(tx, ty, letterAt(letters, x, lineOf(y)), size, stray);
-          buckets[(Math.random() * COLORS.length) | 0]!.push(grain);
+      const add = (grain: Grain) => buckets[(Math.random() * COLORS.length) | 0]!.push(grain);
+      const saved = pattern?.text === lines.join(" ") ? pattern : undefined;
+      if (saved) {
+        // Scale the drawing from the width it was saved at to this one, keeping the same
+        // density: a larger canvas gets proportionally more grains per saved cell.
+        const k = size / (MAX_SIZE * Math.min(1, saved.width / widest));
+        const perCell = k * k;
+        for (const [px, py] of patternPoints(saved)) {
+          let n = Math.floor(perCell) + (Math.random() < perCell % 1 ? 1 : 0);
+          while (n-- > 0) {
+            const tx = (px + (Math.random() - 0.5) * saved.cell) * k;
+            const ty = (py + (Math.random() - 0.5) * saved.cell) * k;
+            add(makeGrain(tx, ty, letterAt(letters, tx, lineOf(ty)), size, false));
+          }
+        }
+      } else {
+        const jitter = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
+        const data = c.getImageData(0, 0, W, H).data;
+        for (let y = 0; y < H; y += 2) {
+          for (let x = 0; x < W; x += 2) {
+            if (data[(y * W + x) * 4 + 3]! < 128 || Math.random() > 0.6) continue;
+            const stray = Math.random() < 0.05;
+            const tx = x + jitter() * (stray ? 7 : 0.8);
+            const ty = y + jitter() * (stray ? 7 : 0.8);
+            add(makeGrain(tx, ty, letterAt(letters, x, lineOf(y)), size, stray));
+          }
         }
       }
       tEnd = settleTime(buckets.flat());

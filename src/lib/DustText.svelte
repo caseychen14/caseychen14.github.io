@@ -1,11 +1,22 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { makeGrain, patternPoints, plough, type DustPattern, type Grain } from "./dust";
+  import {
+    GUST,
+    displaced,
+    gustAt,
+    makeGrain,
+    patternPoints,
+    plough,
+    startGust,
+    type DustPattern,
+    type Grain,
+  } from "./dust";
 
   // The page's hero: words made of loose dust on the ground. Dragging across it draws in
-  // the dirt: grains are pushed aside into ridges and the marks stay. With a saved
-  // `pattern` for the same text, the dust lies in that drawing instead of plain letters.
-  // Drawn on a canvas; the real heading sits beside it for screen readers and search.
+  // the dirt: grains are pushed aside into ridges and the marks stay, until "Blow it back"
+  // sends a gust that carries every grain home. With a saved `pattern` for the same text,
+  // the dust lies in that drawing instead of plain letters. Drawn on a canvas; the real
+  // heading sits beside it for screen readers and search.
   let {
     lines,
     spacing = 0.16,
@@ -16,14 +27,20 @@
   const MAX_SIZE = 132;
 
   let canvas: HTMLCanvasElement | undefined = $state();
+  // Whether anything has been drawn since load (or since the last gust); shows the button.
+  let drawn = $state(false);
+  let blowBack: (() => void) | undefined = $state();
 
   onMount(() => {
     const cv = canvas!;
+    const reduce = matchMedia("(prefers-reduced-motion: reduce)");
     let ctx: CanvasRenderingContext2D;
     let buckets: Grain[][] = [];
     let width = 0;
     let height = 0;
     let raf = 0;
+    // The gust in progress: when it began, which grains it carries, when the last lands.
+    let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
 
     function build() {
       const W = cv.clientWidth;
@@ -95,16 +112,50 @@
 
     function draw() {
       raf = 0;
+      const t = gust ? (performance.now() - gust.t0) / 1000 : 0;
       ctx.clearRect(0, 0, width, height);
       buckets.forEach((grains, i) => {
         ctx.fillStyle = `rgb(${COLORS[i]})`;
         for (const g of grains) {
+          let x = g.tx;
+          let y = g.ty;
+          if (gust?.grains.has(g)) ({ x, y } = gustAt(g, t));
           ctx.globalAlpha = g.a;
-          ctx.fillRect(g.tx, g.ty, g.sz, g.sz);
+          ctx.fillRect(x, y, g.sz, g.sz);
         }
       });
       ctx.globalAlpha = 1;
+      if (gust && t >= gust.end) {
+        for (const g of gust.grains) {
+          g.tx = g.hx;
+          g.ty = g.hy;
+        }
+        gust = null;
+      } else if (gust) {
+        raf = requestAnimationFrame(draw);
+      }
     }
+
+    // A gust sweeps left to right, lifting every displaced grain back to where it lay on
+    // load. With reduced motion the grains simply go home.
+    blowBack = () => {
+      if (gust || !buckets.length) return;
+      const moving = buckets.flat().filter(displaced);
+      drawn = false;
+      if (!moving.length) return;
+      cancelAnimationFrame(raf);
+      if (reduce.matches) {
+        for (const g of moving) {
+          g.tx = g.hx;
+          g.ty = g.hy;
+        }
+      } else {
+        for (const g of moving) startGust(g, width);
+        const end = Math.max(...moving.map((g) => g.delay)) + GUST;
+        gust = { t0: performance.now(), grains: new Set(moving), end };
+      }
+      draw();
+    };
 
     // Drawing in the dirt. Slow strokes cut deep and wide, quick ones leave a scratch.
     let last: [number, number] | null = null;
@@ -114,7 +165,7 @@
       last = [e.offsetX, e.offsetY];
     }
     function onPointerMove(e: PointerEvent) {
-      if (!last) return;
+      if (!last || gust) return;
       const p: [number, number] = [e.offsetX, e.offsetY];
       const speed = Math.hypot(p[0] - last[0], p[1] - last[1]);
       if (speed < 1.5) return;
@@ -122,7 +173,9 @@
       let moved = 0;
       for (const grains of buckets) moved += plough(grains, last, p, w);
       last = p;
-      if (moved && !raf) raf = requestAnimationFrame(draw);
+      if (!moved) return;
+      drawn = true;
+      if (!raf) raf = requestAnimationFrame(draw);
     }
     function onPointerUp() {
       last = null;
@@ -135,6 +188,9 @@
     // Rebuild at the new width (this clears any drawing made since the page loaded).
     const resize = new ResizeObserver(() => {
       if (cv.clientWidth === width) return;
+      cancelAnimationFrame(raf);
+      gust = null;
+      drawn = false;
       build();
       draw();
     });
@@ -160,14 +216,47 @@
 </script>
 
 <h1 class="sr-only">{lines.join(" ")}</h1>
-<canvas bind:this={canvas} aria-hidden="true"></canvas>
+<div class="dust">
+  <!-- Floats above the top-right of the words so showing it never shifts the page. -->
+  <button type="button" class={["link g3 blow", drawn && "shown"]} onclick={() => blowBack?.()}>
+    Blow it back
+  </button>
+  <canvas bind:this={canvas} aria-hidden="true"></canvas>
+</div>
 
 <style>
+  .dust {
+    position: relative;
+  }
   canvas {
     display: block;
     width: 100%;
     cursor: crosshair;
     /* Sideways drags draw; vertical swipes still scroll the page on touch screens. */
     touch-action: pan-y;
+  }
+  .blow {
+    position: absolute;
+    right: 0;
+    bottom: 100%;
+    margin-bottom: 8px;
+    border: 0;
+    padding: 0;
+    background-color: transparent;
+    cursor: pointer;
+    opacity: 0;
+    visibility: hidden;
+    transition:
+      opacity 0.4s,
+      visibility 0.4s;
+  }
+  .blow.shown {
+    opacity: 1;
+    visibility: visible;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .blow {
+      transition: none;
+    }
   }
 </style>

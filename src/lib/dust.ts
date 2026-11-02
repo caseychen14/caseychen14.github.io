@@ -1,7 +1,7 @@
 /**
  * The dust hero (DustText.svelte), kept free of the DOM so it can be tested. The words
  * are made of loose grains that visitors can draw in: a drag pushes grains aside into
- * ridges, and the marks stay.
+ * ridges, and the marks stay until a gust blows every grain back home.
  */
 
 export type Rng = () => number;
@@ -10,6 +10,13 @@ export interface Grain {
   /** Where the grain lies. */
   tx: number;
   ty: number;
+  /** Where it lay when the page loaded; a gust blows it back here. */
+  hx: number;
+  hy: number;
+  /** Where it was when the current gust started, and how long it waited for the gust. */
+  fx: number;
+  fy: number;
+  delay: number;
   sz: number;
   a: number;
 }
@@ -19,8 +26,48 @@ export function makeGrain(tx: number, ty: number, stray: boolean, rnd: Rng = Mat
   return {
     tx,
     ty,
+    hx: tx,
+    hy: ty,
+    fx: tx,
+    fy: ty,
+    delay: 0,
     sz: stray ? 1 : rnd() < 0.15 ? 2.2 : 1.3 + rnd() * 0.6,
     a: stray ? 0.4 + rnd() * 0.3 : 0.6 + rnd() * 0.4,
+  };
+}
+
+/** Seconds each grain spends in the air when a gust blows it home. */
+export const GUST = 0.9;
+
+/** Whether a grain has been moved away from where it lay on load. */
+export function displaced(g: Grain): boolean {
+  return g.tx !== g.hx || g.ty !== g.hy;
+}
+
+/**
+ * Catch a grain in a gust that sweeps left to right across a canvas `width` px wide:
+ * remember where it lies now and when the gust reaches it.
+ */
+export function startGust(g: Grain, width: number, rnd: Rng = Math.random): void {
+  g.fx = g.tx;
+  g.fy = g.ty;
+  g.delay = (g.fx / Math.max(width, 1)) * 0.5 + rnd() * 0.25;
+}
+
+/**
+ * Where a grain caught in a gust is, `t` seconds after the gust began: lifted, carried
+ * along an arc and set down exactly where it lay on load. `done` once it has landed.
+ */
+export function gustAt(g: Grain, t: number): { x: number; y: number; done: boolean } {
+  const u = Math.max(0, Math.min(1, (t - g.delay) / GUST));
+  if (u >= 1) return { x: g.hx, y: g.hy, done: true };
+  const e = u * u * (3 - 2 * u);
+  const arc = Math.sin(Math.PI * u);
+  const lift = Math.min(24, 4 + Math.hypot(g.hx - g.fx, g.hy - g.fy) * 0.5);
+  return {
+    x: g.fx + (g.hx - g.fx) * e + arc * 6,
+    y: g.fy + (g.hy - g.fy) * e - arc * lift,
+    done: false,
   };
 }
 

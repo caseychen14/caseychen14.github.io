@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { makeGrain, patternPoints, plough } from "./dust";
+import { GUST, displaced, gustAt, makeGrain, patternPoints, plough, startGust } from "./dust";
 
 // Deterministic generator so the tests don't flake.
 function seeded(seed = 42) {
@@ -76,5 +76,44 @@ describe("patternPoints", () => {
       expect(x).toBeLessThan(saved.width + saved.cell);
       expect(y).toBeLessThan(saved.height + saved.cell);
     }
+  });
+});
+
+describe("gust", () => {
+  const drawnAway = () => {
+    const g = makeGrain(100, 100, false, seeded(4));
+    plough([g], [90, 101], [110, 101], 8);
+    return g;
+  };
+
+  it("knows which grains have been moved by drawing", () => {
+    const g = makeGrain(10, 10, false);
+    expect(displaced(g)).toBe(false);
+    expect(displaced(drawnAway())).toBe(true);
+  });
+
+  it("starts each grain where it lies now", () => {
+    const g = drawnAway();
+    startGust(g, 600, () => 0);
+    const p = gustAt(g, g.delay);
+    expect([p.x, p.y]).toEqual([g.tx, g.ty]);
+    expect(p.done).toBe(false);
+  });
+
+  it("lifts grains on the way and sets them down exactly where they lay on load", () => {
+    const g = drawnAway();
+    startGust(g, 600, () => 0);
+    const mid = gustAt(g, g.delay + GUST / 2);
+    expect(mid.y).toBeLessThan(Math.min(g.fy, g.hy));
+    const end = gustAt(g, g.delay + GUST);
+    expect(end).toEqual({ x: g.hx, y: g.hy, done: true });
+  });
+
+  it("sweeps left to right: grains further right wait longer for the gust", () => {
+    const left = makeGrain(50, 0, false);
+    const right = makeGrain(550, 0, false);
+    startGust(left, 600, () => 0.5);
+    startGust(right, 600, () => 0.5);
+    expect(right.delay).toBeGreaterThan(left.delay);
   });
 });

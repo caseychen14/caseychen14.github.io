@@ -58,7 +58,7 @@ export const GUST = 1.8;
 /** How many stick-slip pulls the drag home is made of. */
 const PULLS = 5;
 /** Largest shudder, in px, at the middle of the drag. */
-const SHUDDER = 1.2;
+const SHUDDER = 0.6;
 
 /** Whether a grain has been moved away from where it lay on load. */
 export function displaced(g: Grain): boolean {

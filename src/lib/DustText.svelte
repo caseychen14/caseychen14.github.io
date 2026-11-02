@@ -5,7 +5,6 @@
   import { scatterTiming } from "./glow";
   import {
     GUST,
-    WIND,
     displaced,
     gustAt,
     makeGrain,
@@ -13,7 +12,7 @@
     plough,
     startGust,
     startWind,
-    windAt,
+    windStep,
     type DustPattern,
     type Grain,
   } from "./dust";
@@ -32,6 +31,9 @@
 
   const COLORS = ["205,165,124", "192,144,104", "222,190,150", "176,132,92"];
   const MAX_SIZE = 132;
+  // The canvas reaches this far (px) past the words on every side and fades out there, so
+  // blown sand drifts off softly instead of being cut off at a hard edge. Matches the CSS.
+  const BLEED = 48;
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let fanner: HTMLButtonElement | undefined = $state();
@@ -70,17 +72,13 @@
     let width = 0;
     let height = 0;
     let raf = 0;
-    // Grains in motion (a gust home or a puff of wind): when it began, which grains, when
-    // the last one rests, and where a grain is `t` seconds in.
-    let motion: {
-      t0: number;
-      grains: Set<Grain>;
-      end: number;
-      at: (g: Grain, t: number) => { x: number; y: number };
-    } | null = null;
+    // A gust dragging grains home: when it began, which grains, when the last arrives.
+    let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
+    // A puff of wind: when it began, the last frame's time, and grains still sliding.
+    let wind: { t0: number; last: number; grains: Grain[] } | null = null;
 
     function build() {
-      const W = cv.clientWidth;
+      const W = cv.clientWidth - 2 * BLEED;
       const off = document.createElement("canvas");
       const c = off.getContext("2d")!;
       const font = (s: number) => `600 ${s}px "Red Hat Display", sans-serif`;
@@ -137,83 +135,95 @@
         }
       }
 
+      // Grain coordinates stay relative to the words; the transform shifts them past the
+      // bleed.
       const dpr = window.devicePixelRatio || 1;
-      cv.width = W * dpr;
-      cv.height = H * dpr;
-      cv.style.height = `${H}px`;
+      cv.width = (W + 2 * BLEED) * dpr;
+      cv.height = (H + 2 * BLEED) * dpr;
+      cv.style.height = `${H + 2 * BLEED}px`;
       ctx = cv.getContext("2d")!;
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.setTransform(dpr, 0, 0, dpr, BLEED * dpr, BLEED * dpr);
       width = W;
       height = H;
     }
 
     function draw() {
       raf = 0;
-      const t = motion ? (performance.now() - motion.t0) / 1000 : 0;
-      ctx.clearRect(0, 0, width, height);
+      const now = performance.now();
+      if (wind) {
+        // Step the wind physics by the real time since the last frame (capped, so a
+        // background tab doesn't fling grains when it wakes).
+        const t = (now - wind.t0) / 1000;
+        const dt = Math.min(0.05, (now - wind.last) / 1000);
+        wind.last = now;
+        wind.grains = wind.grains.filter((g) => windStep(g, t, dt));
+        if (!wind.grains.length) wind = null;
+      }
+      const t = gust ? (now - gust.t0) / 1000 : 0;
+      ctx.clearRect(-BLEED, -BLEED, width + 2 * BLEED, height + 2 * BLEED);
       buckets.forEach((grains, i) => {
         ctx.fillStyle = `rgb(${COLORS[i]})`;
         for (const g of grains) {
           let x = g.tx;
           let y = g.ty;
-          if (motion?.grains.has(g)) ({ x, y } = motion.at(g, t));
+          if (gust?.grains.has(g)) ({ x, y } = gustAt(g, t));
           ctx.globalAlpha = g.a;
           ctx.fillRect(x, y, g.sz, g.sz);
         }
       });
       ctx.globalAlpha = 1;
-      if (motion && t >= motion.end) {
-        for (const g of motion.grains) {
+      if (gust && t >= gust.end) {
+        for (const g of gust.grains) {
           g.tx = g.gx;
           g.ty = g.gy;
         }
-        motion = null;
-      } else if (motion) {
-        raf = requestAnimationFrame(draw);
+        gust = null;
       }
+      if (gust || wind) raf = requestAnimationFrame(draw);
     }
 
-    // Set grains (already given a goal) moving along `at` for `duration` each, or with
-    // reduced motion, put them straight at their goals.
-    function move(
-      grains: Grain[],
-      at: (g: Grain, t: number) => { x: number; y: number },
-      duration: number,
-    ) {
+    // A gust sweeps left to right, dragging every displaced grain back to where it lay
+    // on load. With reduced motion the grains simply go home.
+    blowBack = () => {
+      if (gust || wind || !buckets.length) return;
+      const moving = buckets.flat().filter(displaced);
+      drawn = false;
+      if (!moving.length) return;
       cancelAnimationFrame(raf);
+      for (const g of moving) startGust(g, width);
       if (reduce.matches) {
-        for (const g of grains) {
+        for (const g of moving) {
           g.tx = g.gx;
           g.ty = g.gy;
         }
       } else {
-        const end = Math.max(...grains.map((g) => g.delay)) + duration;
-        motion = { t0: performance.now(), grains: new Set(grains), end, at };
+        const end = Math.max(...moving.map((g) => g.delay)) + GUST;
+        gust = { t0: performance.now(), grains: new Set(moving), end };
       }
       draw();
-    }
-
-    // A gust sweeps left to right, dragging every displaced grain back to where it lay
-    // on load.
-    blowBack = () => {
-      if (motion || !buckets.length) return;
-      const moving = buckets.flat().filter(displaced);
-      drawn = false;
-      if (!moving.length) return;
-      for (const g of moving) startGust(g, width);
-      move(moving, gustAt, GUST);
     };
 
-    // A puff of wind from the figure's book, blowing the way it points.
+    // A puff of wind from the figure's book, blowing the way it points. With reduced
+    // motion the physics runs to the end at once and the sand appears where it lands.
     puff = () => {
-      if (motion || !buckets.length) return;
+      if (gust || wind || !buckets.length) return;
       const ox = width + BOOK_OFFSET[0];
       const oy = height + BOOK_OFFSET[1];
       const reach = height * 1.6;
       const caught = buckets.flat().filter((g) => startWind(g, ox, oy, ...WIND_DIR, reach));
       if (!caught.length) return;
       drawn = true;
-      move(caught, windAt, WIND);
+      cancelAnimationFrame(raf);
+      if (reduce.matches) {
+        let sliding = caught;
+        for (let t = 0; sliding.length && t < 5; t += 1 / 60) {
+          sliding = sliding.filter((g) => windStep(g, t, 1 / 60));
+        }
+      } else {
+        const now = performance.now();
+        wind = { t0: now, last: now, grains: caught };
+      }
+      draw();
     };
 
     // Drawing in the dirt. Slow strokes cut deep and wide, quick ones leave a scratch.
@@ -221,11 +231,11 @@
     function onPointerDown(e: PointerEvent) {
       if (!buckets.length) return; // not drawn yet (fonts still loading)
       cv.setPointerCapture(e.pointerId);
-      last = [e.offsetX, e.offsetY];
+      last = [e.offsetX - BLEED, e.offsetY - BLEED];
     }
     function onPointerMove(e: PointerEvent) {
-      if (!last || motion) return;
-      const p: [number, number] = [e.offsetX, e.offsetY];
+      if (!last || gust || wind) return;
+      const p: [number, number] = [e.offsetX - BLEED, e.offsetY - BLEED];
       const speed = Math.hypot(p[0] - last[0], p[1] - last[1]);
       if (speed < 1.5) return;
       const w = Math.max(3.5, Math.min(9, 10 - speed * 0.35));
@@ -246,9 +256,10 @@
 
     // Rebuild at the new width (this clears any drawing made since the page loaded).
     const resize = new ResizeObserver(() => {
-      if (cv.clientWidth === width) return;
+      if (cv.clientWidth - 2 * BLEED === width) return;
       cancelAnimationFrame(raf);
-      motion = null;
+      gust = null;
+      wind = null;
       drawn = false;
       build();
       draw();
@@ -304,7 +315,10 @@
   .dust {
     position: relative;
   }
+  /* Above the canvas, whose faded bleed reaches under it. */
   .foot {
+    position: relative;
+    z-index: 1;
     display: flex;
     justify-content: flex-end;
     margin-top: 8px;
@@ -350,15 +364,28 @@
   .hidden {
     visibility: hidden;
   }
+  /* The canvas reaches 48px (BLEED) past the words on every side without taking up any
+     room, and fades to nothing across that margin, so sand blown off the words drifts
+     away softly rather than stopping at a visible edge. */
   canvas {
     display: block;
-    width: 100%;
+    width: calc(100% + 96px);
+    margin: -48px;
+    -webkit-mask-image:
+      linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent),
+      linear-gradient(to bottom, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+    -webkit-mask-composite: source-in;
+    mask-image:
+      linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent),
+      linear-gradient(to bottom, transparent, #000 48px, #000 calc(100% - 48px), transparent);
+    mask-composite: intersect;
     cursor: crosshair;
     /* Sideways drags draw; vertical swipes still scroll the page on touch screens. */
     touch-action: pan-y;
   }
   .blow {
     position: absolute;
+    z-index: 1;
     right: 0;
     bottom: 100%;
     margin-bottom: 8px;

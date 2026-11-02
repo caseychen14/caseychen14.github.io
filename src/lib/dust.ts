@@ -1,8 +1,8 @@
 /**
  * The dust hero (DustText.svelte), kept free of the DOM so it can be tested. The words
  * are made of loose grains that visitors can draw in: a drag pushes grains aside into
- * ridges, a puff of wind from the corner scatters them, and the marks stay until a gust
- * drags every grain back home.
+ * ridges, a puff of wind scatters them, and the marks stay until a gust drags every
+ * grain back home.
  */
 
 export type Rng = () => number;
@@ -14,12 +14,17 @@ export interface Grain {
   /** Where it lay when the page loaded; a gust drags it back here. */
   hx: number;
   hy: number;
-  /** While moving: where it started, where it is headed, and how long it waits to go. */
+  /** While dragged home: where it started, where it is headed, how long it waits to go. */
   fx: number;
   fy: number;
   gx: number;
   gy: number;
   delay: number;
+  /** While blown by wind: its velocity (px/s) and the wind's pull on it (px/s² at peak). */
+  vx: number;
+  vy: number;
+  wx: number;
+  wy: number;
   sz: number;
   a: number;
 }
@@ -36,6 +41,10 @@ export function makeGrain(tx: number, ty: number, stray: boolean, rnd: Rng = Mat
     gx: tx,
     gy: ty,
     delay: 0,
+    vx: 0,
+    vy: 0,
+    wx: 0,
+    wy: 0,
     sz: stray ? 1 : rnd() < 0.15 ? 2.2 : 1.3 + rnd() * 0.6,
     a: stray ? 0.4 + rnd() * 0.3 : 0.6 + rnd() * 0.4,
   };
@@ -86,56 +95,46 @@ export function gustAt(g: Grain, t: number): { x: number; y: number; done: boole
   };
 }
 
-/** Seconds a puff of wind moves the sand for. */
-export const WIND = 1.2;
-/** How far, in px, the puff pushes a grain right at its source. */
-const PUSH = 30;
+/** Seconds the puff of wind blows for. Grains keep sliding a little after it stops. */
+export const WIND = 1.0;
+/** The puff's pull at its source, in px/s², on a grain of average weight. */
+const PULL = 220;
+/** A grain only moves if the wind pulls it harder than this (px/s²): sand sticks. */
+const STICK = 30;
+/** Ground friction: how quickly a sliding grain loses speed (per second). */
+const FRICTION = 4;
+/** Below this speed (px/s), once the wind has died, a grain comes to rest. */
+const REST = 2;
+/** How far either side of the wind's direction each grain may be pushed (radians). */
+const SCATTER = (20 * Math.PI) / 180;
 /** Half-width of the puff, in px, where it leaves the book. */
 const MOUTH = 40;
 /** How much the puff widens per px travelled (tan of its half-angle, about 30°). */
 const SPREAD = Math.tan((30 * Math.PI) / 180);
 
-// The puff's speed envelope: phase boundaries as fractions of WIND, and the steady
-// drift speed during sustain relative to the peak.
+// The puff's strength over time, shaped like a sound envelope (fractions of WIND):
+// attack (builds to full), decay (eases to a steady blow), sustain, release (dies away).
 const ATTACK = 0.15;
 const DECAY = 0.3;
 const SUSTAIN = 0.6;
 const RELEASE = 0.75;
-const AREAS = [
-  ATTACK / 2,
-  ((DECAY - ATTACK) * (1 + SUSTAIN)) / 2,
-  (RELEASE - DECAY) * SUSTAIN,
-  ((1 - RELEASE) * SUSTAIN) / 2,
-];
-const TOTAL = AREAS.reduce((a, b) => a + b, 0);
 
-/**
- * Progress along a puff's path, shaped like a sound envelope: attack (speed builds to a
- * peak), decay (eases to a steady drift), sustain (drifts), release (comes to rest).
- * `u` is the fraction of the puff elapsed; returns the fraction of the path covered.
- */
-export function adsr(u: number): number {
-  const c = Math.max(0, Math.min(1, u));
-  let area: number;
-  if (c < ATTACK) {
-    area = (c * c) / (2 * ATTACK);
-  } else if (c < DECAY) {
-    const x = c - ATTACK;
-    area = AREAS[0]! + x - ((1 - SUSTAIN) * x * x) / (2 * (DECAY - ATTACK));
-  } else if (c < RELEASE) {
-    area = AREAS[0]! + AREAS[1]! + (c - DECAY) * SUSTAIN;
-  } else {
-    const x = c - RELEASE;
-    area = TOTAL - AREAS[3]! + SUSTAIN * x - (SUSTAIN * x * x) / (2 * (1 - RELEASE));
-  }
-  return area / TOTAL;
+/** How hard the puff is blowing, from 0 to 1, `t` seconds after it began. */
+export function windStrength(t: number): number {
+  const u = t / WIND;
+  if (u <= 0 || u >= 1) return 0;
+  if (u < ATTACK) return u / ATTACK;
+  if (u < DECAY) return 1 - ((1 - SUSTAIN) * (u - ATTACK)) / (DECAY - ATTACK);
+  if (u < RELEASE) return SUSTAIN;
+  return (SUSTAIN * (1 - u)) / (1 - RELEASE);
 }
 
 /**
  * Catch a grain in a puff of wind leaving (ox, oy) along the unit direction (dx, dy) and
- * reaching `reach` px. The puff is a widening beam: grains inside it are pushed straight
- * along the wind, more near its source and its middle. Every caught grain starts moving at
- * once. Returns false (and leaves the grain alone) if it lies outside the beam.
+ * reaching `reach` px. The puff is a widening beam, strongest near its source and middle.
+ * Each grain gets its own pull: a little off the wind's direction, a little stronger or
+ * weaker, and weaker on heavier grains. Returns false (and leaves the grain alone) if it
+ * lies outside the beam or the pull is too weak to unstick it.
  */
 export function startWind(
   g: Grain,
@@ -144,6 +143,7 @@ export function startWind(
   dx: number,
   dy: number,
   reach: number,
+  rnd: Rng = Math.random,
 ): boolean {
   const rx = g.tx - ox;
   const ry = g.ty - oy;
@@ -152,24 +152,40 @@ export function startWind(
   const across = Math.abs(rx * dy - ry * dx);
   const halfWidth = MOUTH + along * SPREAD;
   if (across >= halfWidth) return false;
-  const push = PUSH * (1 - along / reach) * (1 - across / halfWidth);
-  g.fx = g.tx;
-  g.fy = g.ty;
-  g.gx = g.tx + dx * push;
-  g.gy = g.ty + dy * push;
-  g.delay = 0;
+  const weight = g.sz / 1.6;
+  const pull =
+    (PULL * (1 - along / reach) * (1 - across / halfWidth) * (0.6 + rnd() * 0.8)) / weight;
+  if (pull < STICK) return false;
+  const turn = (rnd() * 2 - 1) * SCATTER;
+  const c = Math.cos(turn);
+  const s = Math.sin(turn);
+  g.wx = (dx * c - dy * s) * pull;
+  g.wy = (dx * s + dy * c) * pull;
+  g.vx = 0;
+  g.vy = 0;
   return true;
 }
 
 /**
- * Where a grain caught in a puff of wind is, `t` seconds after the puff began: moving in
- * a straight line toward where the wind leaves it, with the puff's speed envelope.
+ * Advance a grain caught in a puff of wind by `dt` seconds, `t` seconds after the puff
+ * began: the wind pulls it (following the puff's strength), friction slows it, and it
+ * slides along the ground. Returns false once it has come to rest.
  */
-export function windAt(g: Grain, t: number): { x: number; y: number; done: boolean } {
-  const u = (t - g.delay) / WIND;
-  if (u >= 1) return { x: g.gx, y: g.gy, done: true };
-  const e = adsr(u);
-  return { x: g.fx + (g.gx - g.fx) * e, y: g.fy + (g.gy - g.fy) * e, done: false };
+export function windStep(g: Grain, t: number, dt: number): boolean {
+  const k = windStrength(t);
+  g.vx += g.wx * k * dt;
+  g.vy += g.wy * k * dt;
+  const keep = Math.exp(-FRICTION * dt);
+  g.vx *= keep;
+  g.vy *= keep;
+  if (k === 0 && t >= WIND && Math.hypot(g.vx, g.vy) < REST) {
+    g.vx = 0;
+    g.vy = 0;
+    return false;
+  }
+  g.tx += g.vx * dt;
+  g.ty += g.vy * dt;
+  return true;
 }
 
 /**

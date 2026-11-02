@@ -42,6 +42,8 @@
 /* Reserve the scrollbar's space on every page so short pages don't shift sideways. */
 html {
   scrollbar-gutter: stable;
+  /* The hero's canvas bleeds past the page edges on narrow screens; don't let it scroll. */
+  overflow-x: clip;
 }
 body {
   margin: 0;

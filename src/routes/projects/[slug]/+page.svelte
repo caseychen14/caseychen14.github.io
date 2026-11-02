@@ -18,34 +18,36 @@
   <meta name="description" content={summary} />
 </svelte:head>
 
-<p><a href={resolve("/projects")}>← All projects</a></p>
-<section class="hero">
-  <span class="badge">{kind}</span>
-  <h1>{title}</h1>
-  <p class="meta">{meta}</p>
-</section>
+<p class="back"><a class="link g3" href={resolve("/projects")}>← All projects</a></p>
+<header class="page-head">
+  <span><span class="chip">{kind}</span></span>
+  <h1 class="dirt">{title}</h1>
+  <p class="label g2">{meta}</p>
+</header>
 
 {#if kind === "poster" && thumbnail}
   <img class="poster" src={staticUrl(thumbnail)} alt={title} />
 {/if}
 
-<section>
+<div class="prose">
   <Content />
-</section>
+</div>
 
 {#if pdfUrl || links.length > 0}
-  <ul class="links">
-    {#if pdfUrl}<li><a href={pdfUrl} rel="external">Download PDF</a></li>{/if}
+  <ul class="detail-links">
+    {#if pdfUrl}<li><a class="link g3" href={pdfUrl} rel="external">Download PDF</a></li>{/if}
     {#each links as link (link.url)}
-      <li><a href={link.url} rel="external">{link.label}</a></li>
+      <li><a class="link g3" href={link.url} rel="external">{link.label}</a></li>
     {/each}
   </ul>
 {/if}
 
 {#if pdfUrl}
   <object class="pdf" data={pdfUrl} type="application/pdf" aria-label={title}>
-    <p>
+    <p class="prose">
       Your browser can't display the PDF here. <a href={pdfUrl} rel="external">Open it instead.</a>
     </p>
   </object>
+{:else}
+  <div class="empty"></div>
 {/if}

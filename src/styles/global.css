@@ -28,9 +28,8 @@
     var(--sky) 100%
   );
 
-  --name: Forum, Georgia, serif;
   --display: "Red Hat Display", system-ui, sans-serif;
-  /* Everything is set in the hero's typeface, except the name and the nav. */
+  /* Everything is set in the hero's typeface, except the nav. */
   --text: "Red Hat Display", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --max: 960px;
@@ -198,11 +197,13 @@ p {
   padding-top: 40px;
   padding-bottom: 40px;
 }
-/* The name: Forum, a light inscriptional serif, as if carved. Used nowhere else. */
+/* The name: big and bold, in the hero's typeface. */
 .brand {
-  font-family: var(--name);
-  font-size: 26px;
-  letter-spacing: 0.02em;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 32px;
+  line-height: 1.1;
+  letter-spacing: 0.01em;
   color: var(--earth);
 }
 .brand.g3 {

@@ -38,7 +38,6 @@ Every piece of text speaks in one of two voices ([ADR 0003](docs/adr/0003-dirt-a
 | **Glow**   | Where things are and what you can do. Lit with a slow light sweep.                            | `.g2` (labels, nav), `.g3` (links) |
 | **Lamp**   | The glow color for passive labels: dates, venues, nav.                                        | `.label.g2`                        |
 | **Sky**    | The glow color for action and structure: links, buttons, current page, focus, timeline nodes. | `.g3`, `.button`                   |
-| **Clay**   | The dirt color for tags.                                                                      | `.chip`                            |
 
 Rules: one voice per element; dirt is still and only glow moves; most words are dirt; hovering a dirt
 title lights a glow arrow (`.tlink`); corners are square; reduced motion stops every animation.

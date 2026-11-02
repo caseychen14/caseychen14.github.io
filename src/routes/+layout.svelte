@@ -68,7 +68,6 @@
 <footer class="container footer">
   <span>© {year} Casey Chen</span>
   <span class="footer-links label">
-    <a class="g2" href="mailto:caseychen@stanford.edu">Email</a>
     <a class="g2" href="https://github.com/caseychen14">GitHub</a>
     <a class="g2" href="https://www.linkedin.com/in/casey-chen-2a4a70242">LinkedIn</a>
   </span>

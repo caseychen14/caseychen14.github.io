@@ -105,7 +105,7 @@ export function gustAt(g: Grain, t: number): { x: number; y: number; done: boole
 /** Seconds the puff of wind blows for. Grains slide on a moment after it stops. */
 export const WIND = 1.0;
 /** The puff's speed at the book, in px/s. */
-const WIND_SPEED = 90;
+const WIND_SPEED = 110;
 /** Grains where the wind is slower than this (px/s) are left out of the puff entirely. */
 const CALM = 3;
 /** How sharply the puff weakens with distance from the book (1 = evenly). */
@@ -184,11 +184,10 @@ export function startWind(
   const turn = (rnd() * 2 - 1) * SCATTER;
   const c = Math.cos(turn);
   const s = Math.sin(turn);
+  // A grain already sliding or mid-hop from an earlier puff keeps its momentum; the new
+  // gust simply takes over pushing it.
   g.wx = (dx * c - dy * s) * speed;
   g.wy = (dx * s + dy * c) * speed;
-  g.vx = 0;
-  g.vy = 0;
-  g.air = 0;
   return true;
 }
 

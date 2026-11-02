@@ -35,8 +35,10 @@
   // The canvas reaches this far (px) past the words on every side and fades out there, so
   // blown sand drifts off softly instead of being cut off at a hard edge. Matches the CSS.
   const BLEED = 48;
-  // A moving grain is drawn as a streak covering this many seconds of its travel.
-  const STREAK = 0.025;
+  // The wind physics runs in steps of this many seconds, at most MAX_STEPS per frame
+  // (two seconds' worth, so a long stall can't freeze the page catching up).
+  const STEP = 1 / 120;
+  const MAX_STEPS = 240;
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let fanner: HTMLButtonElement | undefined = $state();
@@ -47,13 +49,30 @@
   // The figure's book: false = raised, true = fanned open.
   let bookOpen = $state(false);
 
-  // Fan the book open for half a second and back; the wind leaves as it opens.
-  function fan() {
-    if (bookOpen) return;
-    puff?.();
-    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  // Fan the book open for half a second and back; the wind leaves as it opens. Clicking
+  // again while it is open snaps it shut and opens it again: a second fan and a second
+  // puff on top of the first.
+  let closeTimer: ReturnType<typeof setTimeout> | undefined;
+  let reopenTimer: ReturnType<typeof setTimeout> | undefined;
+  function open() {
     bookOpen = true;
-    setTimeout(() => (bookOpen = false), 500);
+    puff?.();
+    clearTimeout(closeTimer);
+    closeTimer = setTimeout(() => (bookOpen = false), 500);
+  }
+  function fan() {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      puff?.();
+      return;
+    }
+    clearTimeout(reopenTimer);
+    if (bookOpen) {
+      clearTimeout(closeTimer);
+      bookOpen = false;
+      reopenTimer = setTimeout(open, 120);
+    } else {
+      open();
+    }
   }
 
   onMount(() => {
@@ -70,8 +89,9 @@
     let raf = 0;
     // A gust dragging grains home: when it began, which grains, when the last arrives.
     let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
-    // A puff of wind: when it began, the last frame's time, and grains still sliding.
-    let wind: { t0: number; last: number; grains: Grain[] } | null = null;
+    // A puff of wind: when it began, how far (s) the physics has been run, and grains
+    // still sliding.
+    let wind: { t0: number; sim: number; grains: Grain[] } | null = null;
 
     function build() {
       const W = cv.clientWidth - 2 * BLEED;
@@ -147,39 +167,26 @@
       raf = 0;
       const now = performance.now();
       if (wind) {
-        // Step the wind physics by the real time since the last frame (capped, so a
-        // background tab doesn't fling grains when it wakes).
-        const t = (now - wind.t0) / 1000;
-        const dt = Math.min(0.05, (now - wind.last) / 1000);
-        wind.last = now;
-        wind.grains = wind.grains.filter((g) => windStep(g, t, dt));
+        // Run the physics in small fixed steps until it catches up with real time, so the
+        // sand ends up in the same place however fast or slowly the screen redraws.
+        const target = (now - wind.t0) / 1000;
+        for (let n = 0; wind.sim < target && wind.grains.length && n < MAX_STEPS; n++) {
+          const t = wind.sim;
+          wind.grains = wind.grains.filter((g) => windStep(g, t, STEP));
+          wind.sim += STEP;
+        }
         if (!wind.grains.length) wind = null;
       }
       const t = gust ? (now - gust.t0) / 1000 : 0;
       ctx.clearRect(-BLEED, -BLEED, width + 2 * BLEED, height + 2 * BLEED);
       buckets.forEach((grains, i) => {
-        ctx.fillStyle = ctx.strokeStyle = `rgb(${COLORS[i]})`;
+        ctx.fillStyle = `rgb(${COLORS[i]})`;
         for (const g of grains) {
           let x = g.tx;
           let y = g.ty;
           if (gust?.grains.has(g)) ({ x, y } = gustAt(g, t));
-          if (g.vx || g.vy) {
-            // Blown grains blur along their path (more mid-hop, when they also lift
-            // toward the light a little: slightly bigger and brighter).
-            const hop = g.air > 0;
-            const blur = hop ? STREAK * 1.8 : STREAK;
-            const cx = x + g.sz / 2;
-            const cy = y + g.sz / 2;
-            ctx.globalAlpha = hop ? Math.min(1, g.a * 1.15) : g.a;
-            ctx.lineWidth = hop ? g.sz * 1.25 : g.sz;
-            ctx.beginPath();
-            ctx.moveTo(cx - g.vx * blur, cy - g.vy * blur);
-            ctx.lineTo(cx, cy);
-            ctx.stroke();
-          } else {
-            ctx.globalAlpha = g.a;
-            ctx.fillRect(x, y, g.sz, g.sz);
-          }
+          ctx.globalAlpha = g.a;
+          ctx.fillRect(x, y, g.sz, g.sz);
         }
       });
       ctx.globalAlpha = 1;
@@ -216,8 +223,10 @@
 
     // A puff of wind from the figure's book, blowing the way it points. With reduced
     // motion the physics runs to the end at once and the sand appears where it lands.
+    // A puff during another one starts a fresh gust over everything it reaches, while
+    // grains still moving from the first keep their momentum.
     puff = () => {
-      if (gust || wind || !buckets.length) return;
+      if (gust || !buckets.length) return;
       const p = puffFrom(width, height);
       const caught = buckets.flat().filter((g) => startWind(g, p.ox, p.oy, p.dx, p.dy, p.reach));
       if (!caught.length) return;
@@ -225,12 +234,12 @@
       cancelAnimationFrame(raf);
       if (reduce.matches) {
         let sliding = caught;
-        for (let t = 0; sliding.length && t < 5; t += 1 / 60) {
-          sliding = sliding.filter((g) => windStep(g, t, 1 / 60));
+        for (let t = 0; sliding.length && t < 5; t += STEP) {
+          sliding = sliding.filter((g) => windStep(g, t, STEP));
         }
       } else {
-        const now = performance.now();
-        wind = { t0: now, last: now, grains: caught };
+        const grains = wind ? [...new Set([...wind.grains, ...caught])] : caught;
+        wind = { t0: performance.now(), sim: 0, grains };
       }
       draw();
     };

@@ -245,6 +245,26 @@ describe("wind", () => {
     expect(slowFrames).toBeLessThan(12); // under a fifth of a second creeping slowly
   });
 
+  it("a second puff keeps grains moving from the first and pushes them further", () => {
+    const once = inBeam(60);
+    const twice = inBeam(60);
+    for (const g of [once, twice]) startWind(g, ...from, ...dir, reach, () => 0.5);
+    // Both slide for half a second; then a second puff catches one of them.
+    let t = 0;
+    for (; t < 0.5; t += 1 / 60) {
+      windStep(once, t, 1 / 60, () => 0.5);
+      windStep(twice, t, 1 / 60, () => 0.5);
+    }
+    const speed = Math.hypot(twice.vx, twice.vy);
+    expect(speed).toBeGreaterThan(0);
+    startWind(twice, ...from, ...dir, reach, () => 0.5);
+    expect(Math.hypot(twice.vx, twice.vy)).toBe(speed); // momentum kept
+    while (windStep(once, t, 1 / 60, () => 0.5) && t < 5) t += 1 / 60;
+    for (let t2 = 0; windStep(twice, t2, 1 / 60, () => 0.5) && t2 < 5; t2 += 1 / 60);
+    const moved = (g: Grain) => Math.hypot(g.tx - g.hx, g.ty - g.hy);
+    expect(moved(twice)).toBeGreaterThan(moved(once));
+  });
+
   it("lets light grains hop, while heavy grains only slide", () => {
     const hops = (size: number) => {
       const g = inBeam(40, 0, size);

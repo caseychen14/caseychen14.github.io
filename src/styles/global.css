@@ -29,8 +29,8 @@
   );
 
   --display: "Red Hat Display", system-ui, sans-serif;
-  /* Everything is set in the hero's typeface, except the nav. */
-  --text: "Red Hat Display", system-ui, sans-serif;
+  /* Body text and the name; headings, labels and the hero use Red Hat Display. */
+  --text: "Ysabeau Office", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --max: 960px;
   color-scheme: dark;
@@ -151,7 +151,7 @@ p {
   }
 }
 .label {
-  font-family: var(--text);
+  font-family: var(--display);
   font-weight: 500;
   font-size: 12px;
   letter-spacing: 0.1em;
@@ -197,9 +197,9 @@ p {
   padding-top: 40px;
   padding-bottom: 40px;
 }
-/* The name: big and bold, in the hero's typeface. */
+/* The name: big and bold, in the body typeface. */
 .brand {
-  font-family: var(--display);
+  font-family: var(--text);
   font-weight: 700;
   font-size: 32px;
   line-height: 1.1;

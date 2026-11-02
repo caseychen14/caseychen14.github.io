@@ -100,13 +100,34 @@ describe("gust", () => {
     expect(p.done).toBe(false);
   });
 
-  it("lifts grains on the way and sets them down exactly where they lay on load", () => {
+  it("drags grains along the ground, creeping closer, and stops exactly where they lay on load", () => {
     const g = drawnAway();
     startGust(g, 600, () => 0);
-    const mid = gustAt(g, g.delay + GUST / 2);
-    expect(mid.y).toBeLessThan(Math.min(g.fy, g.hy));
-    const end = gustAt(g, g.delay + GUST);
-    expect(end).toEqual({ x: g.hx, y: g.hy, done: true });
+    const dist = (u: number) => {
+      const p = gustAt(g, g.delay + GUST * u);
+      return Math.hypot(p.x - g.hx, p.y - g.hy);
+    };
+    const start = Math.hypot(g.fx - g.hx, g.fy - g.hy);
+    // Never lifted or thrown past home: it only creeps closer (give or take the shudder).
+    let prev = start;
+    for (const u of [0.25, 0.5, 0.75]) {
+      expect(dist(u)).toBeLessThanOrEqual(prev + 2 * 1.2);
+      prev = dist(u);
+    }
+    expect(dist(0.75)).toBeLessThan(start);
+    expect(gustAt(g, g.delay + GUST)).toEqual({ x: g.hx, y: g.hy, done: true });
+  });
+
+  it("never jumps: the shudder is fine and the drag is slow", () => {
+    const g = drawnAway();
+    startGust(g, 600, () => 0);
+    // A millisecond apart, a grain should barely have moved.
+    for (let u = 0.1; u < 0.9; u += 0.1) {
+      const t = g.delay + GUST * u;
+      const a = gustAt(g, t);
+      const b = gustAt(g, t + 0.001);
+      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(0.2);
+    }
   });
 
   it("sweeps left to right: grains further right wait longer for the gust", () => {

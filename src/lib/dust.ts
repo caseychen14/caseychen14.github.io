@@ -1,7 +1,7 @@
 /**
  * The dust hero (DustText.svelte), kept free of the DOM so it can be tested. The words
  * are made of loose grains that visitors can draw in: a drag pushes grains aside into
- * ridges, and the marks stay until a gust blows every grain back home.
+ * ridges, and the marks stay until a gust drags every grain back home.
  */
 
 export type Rng = () => number;
@@ -36,8 +36,12 @@ export function makeGrain(tx: number, ty: number, stray: boolean, rnd: Rng = Mat
   };
 }
 
-/** Seconds each grain spends in the air when a gust blows it home. */
-export const GUST = 0.9;
+/** Seconds each grain takes to be dragged home. */
+export const GUST = 1.8;
+/** How many stick-slip pulls the drag home is made of. */
+const PULLS = 5;
+/** Largest shudder, in px, at the middle of the drag. */
+const SHUDDER = 1.2;
 
 /** Whether a grain has been moved away from where it lay on load. */
 export function displaced(g: Grain): boolean {
@@ -55,18 +59,22 @@ export function startGust(g: Grain, width: number, rnd: Rng = Math.random): void
 }
 
 /**
- * Where a grain caught in a gust is, `t` seconds after the gust began: lifted, carried
- * along an arc and set down exactly where it lay on load. `done` once it has landed.
+ * Where a grain caught in a gust is, `t` seconds after the gust began: dragged slowly
+ * along the ground to where it lay on load, in a few stick-slip pulls, shuddering as it
+ * goes and settling still at the end. `done` once it is home.
  */
 export function gustAt(g: Grain, t: number): { x: number; y: number; done: boolean } {
   const u = Math.max(0, Math.min(1, (t - g.delay) / GUST));
   if (u >= 1) return { x: g.hx, y: g.hy, done: true };
-  const e = u * u * (3 - 2 * u);
-  const arc = Math.sin(Math.PI * u);
-  const lift = Math.min(24, 4 + Math.hypot(g.hx - g.fx, g.hy - g.fy) * 0.5);
+  // Stick-slip: progress pauses and lurches PULLS times but never slides backward.
+  const s = u * u * (3 - 2 * u);
+  const e = s - Math.sin(2 * Math.PI * PULLS * s) / (2 * Math.PI * PULLS);
+  // A fine shudder that is strongest mid-drag and gone at both ends.
+  const shake = SHUDDER * Math.sin(Math.PI * u);
+  const seed = g.fx * 1.7 + g.fy * 0.9;
   return {
-    x: g.fx + (g.hx - g.fx) * e + arc * 6,
-    y: g.fy + (g.hy - g.fy) * e - arc * lift,
+    x: g.fx + (g.hx - g.fx) * e + shake * Math.sin(t * 57 + seed),
+    y: g.fy + (g.hy - g.fy) * e + shake * Math.sin(t * 43 + seed * 1.3),
     done: false,
   };
 }

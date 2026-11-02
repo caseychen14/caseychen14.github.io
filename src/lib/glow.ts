@@ -13,7 +13,7 @@ export function scatterTiming(base: number, rnd: () => number = Math.random) {
  * elements already scattered are left alone.
  */
 export function scatterGlow(root: ParentNode, rnd: () => number = Math.random) {
-  for (const el of root.querySelectorAll<HTMLElement>(".g2, .g3, .reader")) {
+  for (const el of root.querySelectorAll<HTMLElement>(".g2, .g3, .glow-ink")) {
     if (el.dataset.glowScattered !== undefined) continue;
     // 0 when reduced motion has switched the animation off.
     const base = parseFloat(getComputedStyle(el).animationDuration);

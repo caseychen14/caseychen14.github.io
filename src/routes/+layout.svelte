@@ -59,7 +59,7 @@
         class={current ? "g3" : "g2"}
         aria-current={current ? "page" : undefined}
       >
-        {#if current}<span class="reader" aria-hidden="true"></span>{/if}
+        {#if current}<span class="reader glow-ink" aria-hidden="true"></span>{/if}
         {link.label}
       </a>
     {/each}

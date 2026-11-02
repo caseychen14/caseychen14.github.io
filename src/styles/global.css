@@ -219,7 +219,13 @@ p {
   font-size: 13px;
   letter-spacing: 0.08em;
 }
-/* The current page: a figure lying on the word, reading, lit by the same sweep. */
+/* Hand-drawn figures: the drawing is a mask, and the sky sweep shows through the ink. */
+.glow-ink {
+  background-image: var(--sweep-sky);
+  background-size: 300% 100%;
+  animation: sweep 9s ease-in-out infinite;
+}
+/* The current page: a figure lying on the word, reading. */
 .reader {
   position: absolute;
   left: 50%;
@@ -227,14 +233,14 @@ p {
   width: 53px;
   height: 17.5px;
   transform: translateX(-50%);
-  background-image: var(--sweep-sky);
-  background-size: 300% 100%;
-  animation: sweep 9s ease-in-out infinite;
   -webkit-mask: var(--reader) no-repeat center / contain;
   mask: var(--reader) no-repeat center / contain;
 }
 main {
   min-height: 60vh;
+  /* The hero's canvas bleeds a little past the column; clip it here (clip, unlike hidden,
+     never scrolls) so the page can't be nudged sideways. */
+  overflow-x: clip;
 }
 .hero {
   display: flex;
@@ -389,7 +395,7 @@ main {
 @media (prefers-reduced-motion: reduce) {
   .g2,
   .g3,
-  .reader {
+  .glow-ink {
     animation: none;
     background-position: 50% 0;
   }

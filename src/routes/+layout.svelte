@@ -1,12 +1,15 @@
 <script lang="ts">
+  import { afterNavigate } from "$app/navigation";
   import { resolve } from "$app/paths";
   import { page } from "$app/state";
   import readerUrl from "#lib/assets/reader.png";
+  import { scatterGlow } from "#lib/glow.ts";
   import "../styles/global.css";
 
   let { children } = $props();
-  const year = new Date().getFullYear();
   const home = resolve("/");
+  // Runs on first load too; each page brings new glowing elements to desynchronise.
+  afterNavigate(() => scatterGlow(document));
   // On the home page the name is the current page, so it lights up like a nav link.
   const isHome = $derived(page.url.pathname === home);
   const links = [
@@ -65,10 +68,3 @@
 <main class="container">
   {@render children()}
 </main>
-<footer class="container footer">
-  <span>© {year} Casey Chen</span>
-  <span class="footer-links label">
-    <a class="g2" href="https://github.com/caseychen14">GitHub</a>
-    <a class="g2" href="https://www.linkedin.com/in/casey-chen-2a4a70242">LinkedIn</a>
-  </span>
-</footer>

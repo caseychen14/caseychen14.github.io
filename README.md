@@ -21,7 +21,7 @@ npm run lint && npm run format:check && npm run check && npm test && npm run bui
 
 - `src/routes/+page.svelte` — homepage: dust hero and selected work.
 - `src/routes/experience/`, `projects/`, `contact/` — the other pages.
-- `src/routes/+layout.svelte` — shared head, nav, footer, and the `#dust` filter.
+- `src/routes/+layout.svelte` — shared head, nav, the `#dust` filter, and glow timing (`src/lib/glow.ts`).
 - `src/routes/projects/[slug]/+page.svelte` — the per-project page.
 - `src/lib/content.ts` — loads and validates project Markdown.
 - `src/lib/DustText.svelte` + `src/lib/dust.ts` — the hero animation (motion is unit-tested).

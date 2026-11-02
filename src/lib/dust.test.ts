@@ -1,14 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  ATTACK,
-  GATHER,
-  grainAt,
-  letterAt,
-  makeGrain,
-  normal,
-  settleTime,
-  type Letter,
-} from "./dust";
+import { GUST, displaced, gustAt, makeGrain, patternPoints, plough, startGust } from "./dust";
 
 // Deterministic generator so the tests don't flake.
 function seeded(seed = 42) {
@@ -19,87 +10,131 @@ function seeded(seed = 42) {
   };
 }
 
-const letter = (line: number, idx: number, x0: number, w = 80): Letter => ({
-  line,
-  x1: x0 + w + 10,
-  cx: x0 + w / 2,
-  cy: 100 + line * 150,
-  w,
-  idx,
-});
+describe("makeGrain", () => {
+  it("lies where it is placed", () => {
+    const g = makeGrain(12, 34, false, seeded());
+    expect([g.tx, g.ty]).toEqual([12, 34]);
+  });
 
-describe("normal", () => {
-  it("has mean near 0 and standard deviation near 1", () => {
-    const rnd = seeded();
-    const xs = Array.from({ length: 20000 }, () => normal(rnd));
-    const mean = xs.reduce((a, b) => a + b, 0) / xs.length;
-    const sd = Math.sqrt(xs.reduce((a, b) => a + (b - mean) ** 2, 0) / xs.length);
-    expect(mean).toBeCloseTo(0, 1);
-    expect(sd).toBeCloseTo(1, 1);
+  it("makes strays smaller and fainter than letter grains", () => {
+    const rnd = seeded(9);
+    for (let i = 0; i < 50; i++) {
+      const stray = makeGrain(0, 0, true, rnd);
+      const grain = makeGrain(0, 0, false, rnd);
+      expect(stray.sz).toBeLessThanOrEqual(grain.sz);
+      expect(stray.a).toBeLessThan(0.7);
+      expect(grain.a).toBeGreaterThanOrEqual(0.6);
+    }
   });
 });
 
-describe("letterAt", () => {
-  const letters = [letter(0, 0, 0), letter(0, 1, 90), letter(1, 2, 0), letter(1, 3, 90)];
+describe("plough", () => {
+  const at = (x: number, y: number) => makeGrain(x, y, false, seeded(1));
 
-  it("picks the letter on the same line whose span holds the pixel", () => {
-    expect(letterAt(letters, 40, 0).idx).toBe(0);
-    expect(letterAt(letters, 120, 0).idx).toBe(1);
-    expect(letterAt(letters, 120, 1).idx).toBe(3);
-  });
-
-  it("falls back to the last letter on the line for pixels past the end", () => {
-    expect(letterAt(letters, 999, 0).idx).toBe(1);
-  });
-});
-
-describe("grainAt", () => {
-  const rnd = seeded(7);
-  const L = letter(0, 3, 200);
-  const g = makeGrain(230, 120, L, 132, false, rnd);
-
-  it("starts in a clump around its own letter", () => {
-    expect(Math.abs(g.sx - L.cx)).toBeLessThan(L.w);
-    expect(Math.abs(g.sy - L.cy)).toBeLessThan(132);
-  });
-
-  it("waits in the clump, fading in, until its delay", () => {
-    const early = grainAt(g, 0);
-    expect(early.a).toBe(0);
-    const waiting = grainAt(g, GATHER / 2);
-    expect(Math.hypot(waiting.x - g.sx, waiting.y - g.sy)).toBeLessThanOrEqual(2 * Math.SQRT2);
-  });
-
-  it("is moving toward its target during decay", () => {
-    const mid = grainAt(g, g.delay + ATTACK + g.dec / 2);
-    const start = Math.hypot(g.sx + g.kx - g.tx, g.sy + g.ky - g.ty);
-    expect(Math.hypot(mid.x - g.tx, mid.y - g.ty)).toBeLessThan(start);
-  });
-
-  it("rests exactly on its target once settled, and stays there", () => {
-    const end = g.delay + ATTACK + g.dec;
-    for (const s of [end, end + 5, Infinity]) {
-      const p = grainAt(g, s);
-      expect([p.x, p.y]).toEqual([g.tx, g.ty]);
+  it("clears grains out of the stick's path, piling them just beyond its edge", () => {
+    const inPath = [at(50, 100), at(80, 102), at(120, 98)];
+    const w = 8;
+    plough(inPath, [0, 100], [200, 100], w, seeded(2));
+    for (const g of inPath) {
+      const d = Math.abs(g.ty - 100);
+      expect(d).toBeGreaterThanOrEqual(w * 1.15);
+      expect(d).toBeLessThanOrEqual(w * 1.15 + 3.5);
     }
   });
 
-  it("later letters leave later", () => {
-    const a = makeGrain(0, 0, letter(0, 0, 0), 132, false, () => 0.5);
-    const b = makeGrain(0, 0, letter(0, 10, 0), 132, false, () => 0.5);
-    expect(b.delay).toBeGreaterThan(a.delay);
+  it("pushes each grain to the side it was already on", () => {
+    const above = at(60, 97);
+    const below = at(60, 103);
+    plough([above, below], [0, 100], [200, 100], 8);
+    expect(above.ty).toBeLessThan(100);
+    expect(below.ty).toBeGreaterThan(100);
+  });
+
+  it("leaves grains outside the groove alone and reports how many moved", () => {
+    const far = at(60, 140);
+    const near = at(60, 101);
+    expect(plough([far, near], [0, 100], [200, 100], 8)).toBe(1);
+    expect([far.tx, far.ty]).toEqual([60, 140]);
   });
 });
 
-describe("settleTime", () => {
-  it("is when the slowest grain arrives", () => {
-    const rnd = seeded(3);
-    const grains = [0, 5, 9].map((i) => makeGrain(0, 0, letter(0, i, 0), 132, false, rnd));
-    const expected = Math.max(...grains.map((g) => g.delay + ATTACK + g.dec));
-    expect(settleTime(grains)).toBe(expected);
+describe("patternPoints", () => {
+  it("decodes one bit per cell, row by row, into cell centers", () => {
+    // 4×2 grid of 2px cells; bits 0 and 5 set → byte 0b00100001 = 33 = "IQ==".
+    const p = { text: "x", width: 8, height: 4, cell: 2, cols: 4, rows: 2, bits: "IQ==" };
+    expect(patternPoints(p)).toEqual([
+      [1, 1],
+      [3, 3],
+    ]);
   });
 
-  it("is 0 for no grains", () => {
-    expect(settleTime([])).toBe(0);
+  it("reads the saved hero pattern", async () => {
+    const saved = (await import("./assets/hero-pattern.json")).default;
+    const points = patternPoints(saved);
+    expect(points).toHaveLength(6856);
+    for (const [x, y] of points) {
+      expect(x).toBeLessThan(saved.width + saved.cell);
+      expect(y).toBeLessThan(saved.height + saved.cell);
+    }
+  });
+});
+
+describe("gust", () => {
+  const drawnAway = () => {
+    const g = makeGrain(100, 100, false, seeded(4));
+    plough([g], [90, 101], [110, 101], 8);
+    return g;
+  };
+
+  it("knows which grains have been moved by drawing", () => {
+    const g = makeGrain(10, 10, false);
+    expect(displaced(g)).toBe(false);
+    expect(displaced(drawnAway())).toBe(true);
+  });
+
+  it("starts each grain where it lies now", () => {
+    const g = drawnAway();
+    startGust(g, 600, () => 0);
+    const p = gustAt(g, g.delay);
+    expect([p.x, p.y]).toEqual([g.tx, g.ty]);
+    expect(p.done).toBe(false);
+  });
+
+  it("drags grains along the ground, creeping closer, and stops exactly where they lay on load", () => {
+    const g = drawnAway();
+    startGust(g, 600, () => 0);
+    const dist = (u: number) => {
+      const p = gustAt(g, g.delay + GUST * u);
+      return Math.hypot(p.x - g.hx, p.y - g.hy);
+    };
+    const start = Math.hypot(g.fx - g.hx, g.fy - g.hy);
+    // Never lifted or thrown past home: it only creeps closer (give or take the shudder).
+    let prev = start;
+    for (const u of [0.25, 0.5, 0.75]) {
+      expect(dist(u)).toBeLessThanOrEqual(prev + 2 * 1.2);
+      prev = dist(u);
+    }
+    expect(dist(0.75)).toBeLessThan(start);
+    expect(gustAt(g, g.delay + GUST)).toEqual({ x: g.hx, y: g.hy, done: true });
+  });
+
+  it("never jumps: the shudder is fine and the drag is slow", () => {
+    const g = drawnAway();
+    startGust(g, 600, () => 0);
+    // A millisecond apart, a grain should barely have moved.
+    for (let u = 0.1; u < 0.9; u += 0.1) {
+      const t = g.delay + GUST * u;
+      const a = gustAt(g, t);
+      const b = gustAt(g, t + 0.001);
+      expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeLessThan(0.2);
+    }
+  });
+
+  it("sweeps left to right: grains further right wait longer for the gust", () => {
+    const left = makeGrain(50, 0, false);
+    const right = makeGrain(550, 0, false);
+    startGust(left, 600, () => 0.5);
+    startGust(right, 600, () => 0.5);
+    expect(right.delay).toBeGreaterThan(left.delay);
   });
 });

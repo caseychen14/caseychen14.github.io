@@ -7,6 +7,8 @@
   let { children } = $props();
   const year = new Date().getFullYear();
   const home = resolve("/");
+  // On the home page the name is the current page, so it lights up like a nav link.
+  const isHome = $derived(page.url.pathname === home);
   const links = [
     { route: "/experience" as const, label: "Experience" },
     { route: "/projects" as const, label: "Projects" },
@@ -43,7 +45,9 @@
 </svg>
 
 <header class="container nav">
-  <a class="brand" href={home}>Casey Chen</a>
+  <a class={["brand", isHome && "g3"]} href={home} aria-current={isHome ? "page" : undefined}>
+    Casey Chen
+  </a>
   <nav class="label" style:--reader={`url("${readerUrl}")`}>
     {#each links as link (link.route)}
       {@const current = page.url.pathname.startsWith(resolve(link.route))}

@@ -98,9 +98,11 @@ export function gustAt(g: Grain, t: number): { x: number; y: number; done: boole
 /** Seconds the puff of wind blows for. Grains keep sliding a little after it stops. */
 export const WIND = 1.0;
 /** The puff's pull at its source, in px/s², on a grain of average weight. */
-const PULL = 220;
+const PULL = 330;
 /** A grain only moves if the wind pulls it harder than this (px/s²): sand sticks. */
-const STICK = 30;
+const STICK = 10;
+/** How sharply the puff weakens with distance from the book (1 = evenly). */
+const FADE = 1.6;
 /** Ground friction: how quickly a sliding grain loses speed (per second). */
 const FRICTION = 4;
 /** Below this speed (px/s), once the wind has died, a grain comes to rest. */
@@ -109,8 +111,8 @@ const REST = 2;
 const SCATTER = (20 * Math.PI) / 180;
 /** Half-width of the puff, in px, where it leaves the book. */
 const MOUTH = 40;
-/** How much the puff widens per px travelled (tan of its half-angle, about 30°). */
-const SPREAD = Math.tan((30 * Math.PI) / 180);
+/** How much the puff widens per px travelled (tan of its half-angle, 60°). */
+const SPREAD = Math.tan((60 * Math.PI) / 180);
 
 // The puff's strength over time, shaped like a sound envelope (fractions of WIND):
 // attack (builds to full), decay (eases to a steady blow), sustain, release (dies away).
@@ -153,8 +155,11 @@ export function startWind(
   const halfWidth = MOUTH + along * SPREAD;
   if (across >= halfWidth) return false;
   const weight = g.sz / 1.6;
-  const pull =
-    (PULL * (1 - along / reach) * (1 - across / halfWidth) * (0.6 + rnd() * 0.8)) / weight;
+  // Dies away quickly with distance, so the farthest sand barely stirs, and eases off
+  // gently toward the sides so the wide beam still reaches its edges.
+  const distance = (1 - along / reach) ** FADE;
+  const side = 1 - (across / halfWidth) ** 2;
+  const pull = (PULL * distance * side * (0.6 + rnd() * 0.8)) / weight;
   if (pull < STICK) return false;
   const turn = (rnd() * 2 - 1) * SCATTER;
   const c = Math.cos(turn);
@@ -164,6 +169,30 @@ export function startWind(
   g.vx = 0;
   g.vy = 0;
   return true;
+}
+
+/** The figure beside the hero leans this far counter-clockwise (matches its CSS). */
+export const LEAN = (30 * Math.PI) / 180;
+/** Where the figure's book sits, leaned, relative to the canvas's bottom-right corner. */
+const BOOK: readonly [number, number] = [-75, 34];
+/** The puff starts this far (px) behind the book, so it also catches sand right beside it. */
+const BEHIND = 40;
+
+/**
+ * Where the figure's puff of wind starts, which way it blows (the way the leaning book
+ * points: up and to the left) and how far it reaches, over a canvas `width` × `height`.
+ */
+export function puffFrom(width: number, height: number) {
+  const dx = -Math.sin(LEAN);
+  const dy = -Math.cos(LEAN);
+  return {
+    ox: width + BOOK[0] - dx * BEHIND,
+    oy: height + BOOK[1] - dy * BEHIND,
+    dx,
+    dy,
+    // Far enough, with the beam's width, to reach every grain of the words.
+    reach: Math.hypot(width, height) * 1.15,
+  };
 }
 
 /**

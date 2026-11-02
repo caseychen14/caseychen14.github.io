@@ -7,6 +7,7 @@ import {
   makeGrain,
   patternPoints,
   plough,
+  puffFrom,
   startGust,
   startWind,
   windStep,
@@ -164,8 +165,8 @@ describe("windStrength", () => {
 });
 
 describe("wind", () => {
-  // Blowing up and to the left, 20° counter-clockwise from straight up, from (600, 300).
-  const lean = (20 * Math.PI) / 180;
+  // Blowing up and to the left, 30° counter-clockwise from straight up, from (600, 300).
+  const lean = (30 * Math.PI) / 180;
   const dir = [-Math.sin(lean), -Math.cos(lean)] as const;
   const from = [600, 300] as const;
   const reach = 500;
@@ -216,7 +217,7 @@ describe("wind", () => {
   it("leaves grains behind the source, out of reach, outside the beam, or stuck alone", () => {
     const behind = inBeam(-20);
     const beyond = inBeam(reach + 10);
-    const outside = inBeam(100, 200);
+    const outside = inBeam(100, 400);
     const stuck = inBeam(reach - 20); // barely any pull this far out
     for (const g of [behind, beyond, outside, stuck]) {
       expect(startWind(g, ...from, ...dir, reach, () => 0.5)).toBe(false);
@@ -256,5 +257,53 @@ describe("wind", () => {
     const moved = (g: Grain) => Math.hypot(g.tx - g.hx, g.ty - g.hy);
     expect(moved(near)).toBeGreaterThan(moved(far));
     expect(displaced(near)).toBe(true);
+  });
+});
+
+describe("puffFrom", () => {
+  it("blows up and to the left, the way the leaning figure's book points", () => {
+    const p = puffFrom(669, 324);
+    expect(p.dx).toBeLessThan(0);
+    expect(p.dy).toBeLessThan(0);
+    expect(Math.hypot(p.dx, p.dy)).toBeCloseTo(1, 10);
+  });
+
+  it("reaches every grain of the hero, even with the weakest luck on the heaviest grains", () => {
+    for (const [w, h] of [
+      [669, 324],
+      [960, 466],
+      [327, 159],
+    ] as const) {
+      const p = puffFrom(w, h);
+      for (let x = 0; x <= w; x += w / 20) {
+        for (let y = 0; y <= h; y += h / 10) {
+          const g = makeGrain(x, y, false);
+          g.sz = 2.2;
+          expect(startWind(g, p.ox, p.oy, p.dx, p.dy, p.reach, () => 0)).toBe(true);
+        }
+      }
+    }
+  });
+});
+
+describe("puff strength across the hero", () => {
+  // Run one grain through a whole puff and report how far it slid.
+  const slide = (x: number, y: number, w: number, h: number) => {
+    const p = puffFrom(w, h);
+    const g = makeGrain(x, y, false);
+    g.sz = 1.6;
+    if (!startWind(g, p.ox, p.oy, p.dx, p.dy, p.reach, () => 0.5)) return 0;
+    let t = 0;
+    while (windStep(g, t, 1 / 60) && t < 5) t += 1 / 60;
+    return Math.hypot(g.tx - x, g.ty - y);
+  };
+
+  it("barely stirs the farthest sand at the top left, and moves the sand near the book plenty", () => {
+    const [w, h] = [669, 324];
+    const far = slide(0, 0, w, h);
+    const near = slide(w - 80, h - 40, w, h);
+    expect(far).toBeGreaterThan(0);
+    expect(far).toBeLessThan(4);
+    expect(near).toBeGreaterThan(far * 8);
   });
 });

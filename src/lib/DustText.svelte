@@ -10,6 +10,7 @@
     makeGrain,
     patternPoints,
     plough,
+    puffFrom,
     startGust,
     startWind,
     windStep,
@@ -19,7 +20,7 @@
 
   // The page's hero: words made of loose dust on the ground. Dragging across it draws in
   // the dirt: grains are pushed aside into ridges and the marks stay. The little figure
-  // at the bottom right, leaning 20° to the left, fans its book when clicked, sending a
+  // at the bottom right, leaning 30° to the left, fans its book when clicked, sending a
   // puff of wind the way the book points. "Restore" then drags every grain home. With a
   // saved `pattern` for the same text, the dust lies in that drawing instead of plain
   // letters. Drawn on a canvas; the real heading sits beside it for screen readers.
@@ -43,13 +44,6 @@
   let puff: (() => void) | undefined = $state();
   // The figure's book: false = raised, true = fanned open.
   let bookOpen = $state(false);
-
-  // The figure leans this far counter-clockwise; its book, and so the wind, points the
-  // same way: up and to the left.
-  const LEAN = (20 * Math.PI) / 180;
-  const WIND_DIR = [-Math.sin(LEAN), -Math.cos(LEAN)] as const;
-  // Where the book sits, relative to the canvas's bottom-right corner, once leaned.
-  const BOOK_OFFSET = [-63, 26] as const;
 
   // Fan the book open for half a second and back; the wind leaves as it opens.
   function fan() {
@@ -207,10 +201,8 @@
     // motion the physics runs to the end at once and the sand appears where it lands.
     puff = () => {
       if (gust || wind || !buckets.length) return;
-      const ox = width + BOOK_OFFSET[0];
-      const oy = height + BOOK_OFFSET[1];
-      const reach = height * 1.6;
-      const caught = buckets.flat().filter((g) => startWind(g, ox, oy, ...WIND_DIR, reach));
+      const p = puffFrom(width, height);
+      const caught = buckets.flat().filter((g) => startWind(g, p.ox, p.oy, p.dx, p.dy, p.reach));
       if (!caught.length) return;
       drawn = true;
       cancelAnimationFrame(raf);
@@ -333,8 +325,8 @@
     background: none;
     cursor: pointer;
     filter: drop-shadow(0 0 8px rgb(143 178 222 / 0.45));
-    /* Leaning 20° counter-clockwise, pivoting on the bench (see LEAN in the script). */
-    transform: rotate(-20deg);
+    /* Leaning 30° counter-clockwise, pivoting on the bench (see LEAN in dust.ts). */
+    transform: rotate(-30deg);
     transform-origin: 62% 100%;
   }
   .frame {
@@ -366,17 +358,30 @@
   }
   /* The canvas reaches 48px (BLEED) past the words on every side without taking up any
      room, and fades to nothing across that margin, so sand blown off the words drifts
-     away softly rather than stopping at a visible edge. */
+     away softly rather than stopping at a visible edge. Sideways the fade finishes within
+     24px, inside the page's side padding, where the main column clips. */
   canvas {
     display: block;
     width: calc(100% + 96px);
     margin: -48px;
     -webkit-mask-image:
-      linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent),
+      linear-gradient(
+        to right,
+        transparent 24px,
+        #000 48px,
+        #000 calc(100% - 48px),
+        transparent calc(100% - 24px)
+      ),
       linear-gradient(to bottom, transparent, #000 48px, #000 calc(100% - 48px), transparent);
     -webkit-mask-composite: source-in;
     mask-image:
-      linear-gradient(to right, transparent, #000 48px, #000 calc(100% - 48px), transparent),
+      linear-gradient(
+        to right,
+        transparent 24px,
+        #000 48px,
+        #000 calc(100% - 48px),
+        transparent calc(100% - 24px)
+      ),
       linear-gradient(to bottom, transparent, #000 48px, #000 calc(100% - 48px), transparent);
     mask-composite: intersect;
     cursor: crosshair;

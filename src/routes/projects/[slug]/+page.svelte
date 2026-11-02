@@ -20,7 +20,6 @@
 
 <p class="back"><a class="link g3" href={resolve("/projects")}>← All projects</a></p>
 <header class="page-head">
-  <span><span class="chip">{kind}</span></span>
   <h1 class="dirt">{title}</h1>
   <p class="label g2">{meta}</p>
 </header>

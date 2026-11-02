@@ -2,7 +2,7 @@
   import { resolve } from "$app/paths";
   import type { ProjectData } from "#lib/content.ts";
 
-  // One project as a row: date in glow, title and summary in dirt, kind as a clay chip.
+  // One project as a row: date in glow, title and summary in dirt.
   let { id, data }: { id: string; data: ProjectData } = $props();
   const meta = $derived([data.date.getFullYear(), data.venue].filter(Boolean).join(" · "));
 </script>
@@ -18,5 +18,4 @@
     </h3>
     <p class="muted">{data.summary}</p>
   </div>
-  <span class="chip">{data.kind}</span>
 </article>

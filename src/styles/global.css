@@ -1,6 +1,6 @@
 /*
  * Two voices (see README "Design system"):
- *   Dirt — matte, still, earth colors: what is said (titles, body, tags).
+ *   Dirt — matte, still, earth colors: what is said (titles, body).
  *   Glow — lit, slowly sweeping light: where things are (labels, nav, links, nodes).
  * The ground under both belongs to neither. Corners are square.
  */
@@ -13,8 +13,6 @@
   --bone: #ece3d2;
   --body: #e2d8c6;
   --dust: #aa9f8c;
-  --clay: #5e4039;
-  --clay-text: #f1ddd3;
   /* Glow */
   --lamp: #d9c99e;
   --lamp-light: #fff3d6;
@@ -106,17 +104,6 @@ p {
 }
 .muted {
   color: var(--dust);
-}
-.chip {
-  display: inline-block;
-  padding: 5px 12px;
-  background: var(--clay);
-  color: var(--clay-text);
-  border-radius: 2px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1.4;
-  text-transform: capitalize;
 }
 .prose {
   color: var(--body);
@@ -419,27 +406,6 @@ main {
   margin-bottom: 160px;
   border: 1px solid var(--furrow);
   border-radius: 2px;
-}
-
-.footer {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 40px;
-  padding-bottom: 56px;
-  font-size: 14px;
-  color: var(--dust);
-}
-.footer-links {
-  display: flex;
-  gap: 24px;
-}
-.footer-links a {
-  display: inline-flex;
-  align-items: center;
-  min-height: 44px;
 }
 
 @media (prefers-reduced-motion: reduce) {

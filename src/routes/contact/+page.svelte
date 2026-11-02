@@ -6,7 +6,8 @@
 </header>
 
 <ul class="link-list">
-  <li><a class="link g3" href="mailto:caseychen@stanford.edu">Email →</a></li>
-  <li><a class="link g3" href="https://github.com/caseychen14">GitHub →</a></li>
-  <li><a class="link g3" href="https://www.linkedin.com/in/casey-chen-2a4a70242">LinkedIn →</a></li>
+  <!-- Written out, not linked, to keep the address away from scrapers. -->
+  <li><span class="link g2">caseychen[at]stanford[dot]edu</span></li>
+  <li><a class="link g3" href="https://github.com/caseychen14">GitHub</a></li>
+  <li><a class="link g3" href="https://www.linkedin.com/in/casey-chen-2a4a70242">LinkedIn</a></li>
 </ul>

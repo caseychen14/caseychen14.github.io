@@ -1,22 +1,29 @@
 <script lang="ts">
   import { onMount } from "svelte";
+  import fannerOpen from "./assets/fanner-open.png";
+  import fannerRaised from "./assets/fanner-raised.png";
+  import { scatterTiming } from "./glow";
   import {
     GUST,
+    WIND,
     displaced,
     gustAt,
     makeGrain,
     patternPoints,
     plough,
     startGust,
+    startWind,
+    windAt,
     type DustPattern,
     type Grain,
   } from "./dust";
 
   // The page's hero: words made of loose dust on the ground. Dragging across it draws in
-  // the dirt: grains are pushed aside into ridges and the marks stay, until "Blow it back"
-  // sends a gust that carries every grain home. With a saved `pattern` for the same text,
-  // the dust lies in that drawing instead of plain letters. Drawn on a canvas; the real
-  // heading sits beside it for screen readers and search.
+  // the dirt: grains are pushed aside into ridges and the marks stay. The little figure
+  // at the bottom right fans its book when clicked, sending a puff of wind from that
+  // corner that scatters nearby sand. "Blow it back" then drags every grain home. With a
+  // saved `pattern` for the same text, the dust lies in that drawing instead of plain
+  // letters. Drawn on a canvas; the real heading sits beside it for screen readers.
   let {
     lines,
     spacing = 0.16,
@@ -27,20 +34,53 @@
   const MAX_SIZE = 132;
 
   let canvas: HTMLCanvasElement | undefined = $state();
-  // Whether anything has been drawn since load (or since the last gust); shows the button.
+  let fanner: HTMLButtonElement | undefined = $state();
+  // Whether the sand has been moved since load (or since the last gust); shows the button.
   let drawn = $state(false);
   let blowBack: (() => void) | undefined = $state();
+  let puff: (() => void) | undefined = $state();
+  // The figure's book: false = raised, true = fanned open.
+  let bookOpen = $state(false);
+  let fanning = false;
+
+  // Flap the book open and shut twice; the wind leaves on the first flap.
+  function fan() {
+    if (fanning) return;
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      puff?.();
+      return;
+    }
+    fanning = true;
+    const flaps = [true, false, true, false];
+    flaps.forEach((open, i) =>
+      setTimeout(() => {
+        bookOpen = open;
+        if (i === 0) puff?.();
+        if (i === flaps.length - 1) fanning = false;
+      }, i * 140),
+    );
+  }
 
   onMount(() => {
     const cv = canvas!;
     const reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    // One random glow pace for the figure, inherited by both of its frames.
+    const timing = scatterTiming(9);
+    fanner!.style.animationDuration = `${timing.duration}s`;
+    fanner!.style.animationDelay = `${timing.delay}s`;
     let ctx: CanvasRenderingContext2D;
     let buckets: Grain[][] = [];
     let width = 0;
     let height = 0;
     let raf = 0;
-    // The gust in progress: when it began, which grains it carries, when the last lands.
-    let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
+    // Grains in motion (a gust home or a puff of wind): when it began, which grains, when
+    // the last one rests, and where a grain is `t` seconds in.
+    let motion: {
+      t0: number;
+      grains: Set<Grain>;
+      end: number;
+      at: (g: Grain, t: number) => { x: number; y: number };
+    } | null = null;
 
     function build() {
       const W = cv.clientWidth;
@@ -112,49 +152,69 @@
 
     function draw() {
       raf = 0;
-      const t = gust ? (performance.now() - gust.t0) / 1000 : 0;
+      const t = motion ? (performance.now() - motion.t0) / 1000 : 0;
       ctx.clearRect(0, 0, width, height);
       buckets.forEach((grains, i) => {
         ctx.fillStyle = `rgb(${COLORS[i]})`;
         for (const g of grains) {
           let x = g.tx;
           let y = g.ty;
-          if (gust?.grains.has(g)) ({ x, y } = gustAt(g, t));
+          if (motion?.grains.has(g)) ({ x, y } = motion.at(g, t));
           ctx.globalAlpha = g.a;
           ctx.fillRect(x, y, g.sz, g.sz);
         }
       });
       ctx.globalAlpha = 1;
-      if (gust && t >= gust.end) {
-        for (const g of gust.grains) {
-          g.tx = g.hx;
-          g.ty = g.hy;
+      if (motion && t >= motion.end) {
+        for (const g of motion.grains) {
+          g.tx = g.gx;
+          g.ty = g.gy;
         }
-        gust = null;
-      } else if (gust) {
+        motion = null;
+      } else if (motion) {
         raf = requestAnimationFrame(draw);
       }
     }
 
-    // A gust sweeps left to right, lifting every displaced grain back to where it lay on
-    // load. With reduced motion the grains simply go home.
+    // Set grains (already given a goal) moving along `at` for `duration` each, or with
+    // reduced motion, put them straight at their goals.
+    function move(
+      grains: Grain[],
+      at: (g: Grain, t: number) => { x: number; y: number },
+      duration: number,
+    ) {
+      cancelAnimationFrame(raf);
+      if (reduce.matches) {
+        for (const g of grains) {
+          g.tx = g.gx;
+          g.ty = g.gy;
+        }
+      } else {
+        const end = Math.max(...grains.map((g) => g.delay)) + duration;
+        motion = { t0: performance.now(), grains: new Set(grains), end, at };
+      }
+      draw();
+    }
+
+    // A gust sweeps left to right, dragging every displaced grain back to where it lay
+    // on load.
     blowBack = () => {
-      if (gust || !buckets.length) return;
+      if (motion || !buckets.length) return;
       const moving = buckets.flat().filter(displaced);
       drawn = false;
       if (!moving.length) return;
-      cancelAnimationFrame(raf);
-      if (reduce.matches) {
-        for (const g of moving) {
-          g.tx = g.hx;
-          g.ty = g.hy;
-        }
-      } else {
-        for (const g of moving) startGust(g, width);
-        const end = Math.max(...moving.map((g) => g.delay)) + GUST;
-        gust = { t0: performance.now(), grains: new Set(moving), end };
-      }
-      draw();
+      for (const g of moving) startGust(g, width);
+      move(moving, gustAt, GUST);
+    };
+
+    // A light puff of wind from the bottom-right corner, where the figure sits.
+    puff = () => {
+      if (motion || !buckets.length) return;
+      const reach = Math.hypot(width, height) * 0.6;
+      const caught = buckets.flat().filter((g) => startWind(g, width, height, reach));
+      if (!caught.length) return;
+      drawn = true;
+      move(caught, windAt, WIND);
     };
 
     // Drawing in the dirt. Slow strokes cut deep and wide, quick ones leave a scratch.
@@ -165,7 +225,7 @@
       last = [e.offsetX, e.offsetY];
     }
     function onPointerMove(e: PointerEvent) {
-      if (!last || gust) return;
+      if (!last || motion) return;
       const p: [number, number] = [e.offsetX, e.offsetY];
       const speed = Math.hypot(p[0] - last[0], p[1] - last[1]);
       if (speed < 1.5) return;
@@ -189,7 +249,7 @@
     const resize = new ResizeObserver(() => {
       if (cv.clientWidth === width) return;
       cancelAnimationFrame(raf);
-      gust = null;
+      motion = null;
       drawn = false;
       build();
       draw();
@@ -222,11 +282,71 @@
     Blow it back
   </button>
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
+  <div class="foot">
+    <button
+      bind:this={fanner}
+      type="button"
+      class="fanner"
+      aria-label="Fan the book to send a puff of wind across the sand"
+      onclick={fan}
+      style:--raised={`url("${fannerRaised}")`}
+      style:--open={`url("${fannerOpen}")`}
+    >
+      <!-- Both frames stay loaded; flapping just swaps which one shows. They share the
+           button's glow timing (data-glow-scattered keeps scatterGlow off them), so the
+           shimmer doesn't jump when the frame changes. -->
+      <span class="glow-ink frame raised" class:hidden={bookOpen} data-glow-scattered></span>
+      <span class="glow-ink frame open" class:hidden={!bookOpen} data-glow-scattered></span>
+    </button>
+  </div>
 </div>
 
 <style>
   .dust {
     position: relative;
+  }
+  .foot {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+  }
+  /* The two drawings are scaled so their benches match, then lined up on the bench. */
+  .fanner {
+    position: relative;
+    width: 68px;
+    height: 88px;
+    border: 0;
+    padding: 0;
+    background: none;
+    cursor: pointer;
+    filter: drop-shadow(0 0 8px rgb(143 178 222 / 0.45));
+  }
+  .frame {
+    position: absolute;
+    inset: 0;
+    animation-duration: inherit;
+    animation-delay: inherit;
+    -webkit-mask-repeat: no-repeat;
+    mask-repeat: no-repeat;
+  }
+  .raised {
+    -webkit-mask-image: var(--raised);
+    mask-image: var(--raised);
+    -webkit-mask-size: 54.5px 61.4px;
+    mask-size: 54.5px 61.4px;
+    -webkit-mask-position: 11.6px 100%;
+    mask-position: 11.6px 100%;
+  }
+  .open {
+    -webkit-mask-image: var(--open);
+    mask-image: var(--open);
+    -webkit-mask-size: 61px 88px;
+    mask-size: 61px 88px;
+    -webkit-mask-position: 1px 100%;
+    mask-position: 1px 100%;
+  }
+  .hidden {
+    visibility: hidden;
   }
   canvas {
     display: block;

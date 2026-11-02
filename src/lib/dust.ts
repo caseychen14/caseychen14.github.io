@@ -1,7 +1,8 @@
 /**
  * The dust hero (DustText.svelte), kept free of the DOM so it can be tested. The words
  * are made of loose grains that visitors can draw in: a drag pushes grains aside into
- * ridges, and the marks stay until a gust drags every grain back home.
+ * ridges, a puff of wind from the corner scatters them, and the marks stay until a gust
+ * drags every grain back home.
  */
 
 export type Rng = () => number;
@@ -10,12 +11,14 @@ export interface Grain {
   /** Where the grain lies. */
   tx: number;
   ty: number;
-  /** Where it lay when the page loaded; a gust blows it back here. */
+  /** Where it lay when the page loaded; a gust drags it back here. */
   hx: number;
   hy: number;
-  /** Where it was when the current gust started, and how long it waited for the gust. */
+  /** While moving: where it started, where it is headed, and how long it waits to go. */
   fx: number;
   fy: number;
+  gx: number;
+  gy: number;
   delay: number;
   sz: number;
   a: number;
@@ -30,6 +33,8 @@ export function makeGrain(tx: number, ty: number, stray: boolean, rnd: Rng = Mat
     hy: ty,
     fx: tx,
     fy: ty,
+    gx: tx,
+    gy: ty,
     delay: 0,
     sz: stray ? 1 : rnd() < 0.15 ? 2.2 : 1.3 + rnd() * 0.6,
     a: stray ? 0.4 + rnd() * 0.3 : 0.6 + rnd() * 0.4,
@@ -55,6 +60,8 @@ export function displaced(g: Grain): boolean {
 export function startGust(g: Grain, width: number, rnd: Rng = Math.random): void {
   g.fx = g.tx;
   g.fy = g.ty;
+  g.gx = g.hx;
+  g.gy = g.hy;
   g.delay = (g.fx / Math.max(width, 1)) * 0.5 + rnd() * 0.25;
 }
 
@@ -65,7 +72,7 @@ export function startGust(g: Grain, width: number, rnd: Rng = Math.random): void
  */
 export function gustAt(g: Grain, t: number): { x: number; y: number; done: boolean } {
   const u = Math.max(0, Math.min(1, (t - g.delay) / GUST));
-  if (u >= 1) return { x: g.hx, y: g.hy, done: true };
+  if (u >= 1) return { x: g.gx, y: g.gy, done: true };
   // Stick-slip: progress pauses and lurches PULLS times but never slides backward.
   const s = u * u * (3 - 2 * u);
   const e = s - Math.sin(2 * Math.PI * PULLS * s) / (2 * Math.PI * PULLS);
@@ -73,8 +80,57 @@ export function gustAt(g: Grain, t: number): { x: number; y: number; done: boole
   const shake = SHUDDER * Math.sin(Math.PI * u);
   const seed = g.fx * 1.7 + g.fy * 0.9;
   return {
-    x: g.fx + (g.hx - g.fx) * e + shake * Math.sin(t * 57 + seed),
-    y: g.fy + (g.hy - g.fy) * e + shake * Math.sin(t * 43 + seed * 1.3),
+    x: g.fx + (g.gx - g.fx) * e + shake * Math.sin(t * 57 + seed),
+    y: g.fy + (g.gy - g.fy) * e + shake * Math.sin(t * 43 + seed * 1.3),
+    done: false,
+  };
+}
+
+/** Seconds a puff of wind takes to settle each grain it moves. */
+export const WIND = 0.8;
+/** How far, in px, the puff pushes a grain right beside the corner it comes from. */
+const PUSH = 26;
+
+/**
+ * Catch a grain in a light puff of wind from the point (cx, cy), reaching `reach` px:
+ * grains nearby are pushed away from it, less the further off they lie, and the puff
+ * reaches distant grains later. Returns false (and leaves the grain alone) if out of reach.
+ */
+export function startWind(
+  g: Grain,
+  cx: number,
+  cy: number,
+  reach: number,
+  rnd: Rng = Math.random,
+): boolean {
+  const dx = g.tx - cx;
+  const dy = g.ty - cy;
+  const d = Math.hypot(dx, dy);
+  if (d >= reach) return false;
+  const falloff = (1 - d / reach) ** 1.5;
+  const push = PUSH * falloff * (0.6 + rnd() * 0.8);
+  // Away from the corner, give or take a little, so the sand fans out.
+  const angle = Math.atan2(dy, dx) + (rnd() - 0.5) * 0.6;
+  g.fx = g.tx;
+  g.fy = g.ty;
+  g.gx = g.tx + Math.cos(angle) * push;
+  g.gy = g.ty + Math.sin(angle) * push;
+  g.delay = (d / reach) * 0.6 + rnd() * 0.08;
+  return true;
+}
+
+/**
+ * Where a grain caught in a puff of wind is, `t` seconds after the puff began: skittering
+ * quickly at first, slowing as the air dies, with a slight flutter, and resting at the end.
+ */
+export function windAt(g: Grain, t: number): { x: number; y: number; done: boolean } {
+  const u = Math.max(0, Math.min(1, (t - g.delay) / WIND));
+  if (u >= 1) return { x: g.gx, y: g.gy, done: true };
+  const e = 1 - (1 - u) ** 3;
+  const flutter = 0.8 * Math.sin(Math.PI * u) * Math.sin(t * 38 + g.fx);
+  return {
+    x: g.fx + (g.gx - g.fx) * e + flutter,
+    y: g.fy + (g.gy - g.fy) * e - flutter,
     done: false,
   };
 }

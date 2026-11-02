@@ -1,5 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { GUST, displaced, gustAt, makeGrain, patternPoints, plough, startGust } from "./dust";
+import {
+  GUST,
+  WIND,
+  displaced,
+  gustAt,
+  makeGrain,
+  patternPoints,
+  plough,
+  startGust,
+  startWind,
+  windAt,
+} from "./dust";
 
 // Deterministic generator so the tests don't flake.
 function seeded(seed = 42) {
@@ -136,5 +147,51 @@ describe("gust", () => {
     startGust(left, 600, () => 0.5);
     startGust(right, 600, () => 0.5);
     expect(right.delay).toBeGreaterThan(left.delay);
+  });
+});
+
+describe("wind from a corner", () => {
+  // A 600×300 canvas with the puff coming from its bottom-right corner.
+  const corner = [600, 300] as const;
+  const reach = 400;
+
+  it("pushes nearby grains away from the corner", () => {
+    const g = makeGrain(560, 270, false);
+    expect(startWind(g, ...corner, reach, () => 0.5)).toBe(true);
+    const before = Math.hypot(g.fx - corner[0], g.fy - corner[1]);
+    const after = Math.hypot(g.gx - corner[0], g.gy - corner[1]);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  it("pushes grains less the further they are from the corner", () => {
+    const near = makeGrain(570, 280, false);
+    const far = makeGrain(350, 150, false);
+    startWind(near, ...corner, reach, () => 0.5);
+    startWind(far, ...corner, reach, () => 0.5);
+    const moved = (g: typeof near) => Math.hypot(g.gx - g.fx, g.gy - g.fy);
+    expect(moved(near)).toBeGreaterThan(moved(far));
+  });
+
+  it("leaves grains out of reach alone", () => {
+    const g = makeGrain(20, 20, false);
+    expect(startWind(g, ...corner, reach)).toBe(false);
+    expect([g.gx, g.gy]).toEqual([20, 20]);
+  });
+
+  it("reaches distant grains later, like a front spreading from the corner", () => {
+    const near = makeGrain(580, 290, false);
+    const far = makeGrain(400, 200, false);
+    startWind(near, ...corner, reach, () => 0.5);
+    startWind(far, ...corner, reach, () => 0.5);
+    expect(far.delay).toBeGreaterThan(near.delay);
+  });
+
+  it("settles each grain exactly where the wind left it, displaced from home", () => {
+    const g = makeGrain(560, 270, false);
+    startWind(g, ...corner, reach, () => 0.5);
+    expect(windAt(g, g.delay + WIND)).toEqual({ x: g.gx, y: g.gy, done: true });
+    g.tx = g.gx;
+    g.ty = g.gy;
+    expect(displaced(g)).toBe(true);
   });
 });

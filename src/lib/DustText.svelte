@@ -44,6 +44,10 @@
   let fanner: HTMLButtonElement | undefined = $state();
   // Whether the sand has been moved since load (or since the last gust); shows the button.
   let drawn = $state(false);
+  // How far (px) the words stop short of the canvas's right edge. On wide screens the
+  // words reach their largest size and stop growing, so the figure is moved in by this
+  // much to stay beside the last letter.
+  let textInset = $state(0);
   let blowBack: (() => void) | undefined = $state();
   let puff: (() => void) | undefined = $state();
   // The figure's book: false = raised, true = fanned open.
@@ -86,6 +90,8 @@
     let buckets: Grain[][] = [];
     let width = 0;
     let height = 0;
+    // Where the words end, measured from the left (px).
+    let textRight = 0;
     let raf = 0;
     // A gust dragging grains home: when it began, which grains, when the last arrives.
     let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
@@ -161,6 +167,8 @@
       ctx.setTransform(dpr, 0, 0, dpr, BLEED * dpr, BLEED * dpr);
       width = W;
       height = H;
+      textRight = Math.min(W, widest * (size / MAX_SIZE));
+      textInset = W - textRight;
     }
 
     function draw() {
@@ -227,7 +235,8 @@
     // grains still moving from the first keep their momentum.
     puff = () => {
       if (gust || !buckets.length) return;
-      const p = puffFrom(width, height);
+      // From the figure beside the last letter, wherever the words end.
+      const p = puffFrom(textRight, height);
       const caught = buckets.flat().filter((g) => startWind(g, p.ox, p.oy, p.dx, p.dy, p.reach));
       if (!caught.length) return;
       drawn = true;
@@ -310,7 +319,7 @@
     Restore
   </button>
   <canvas bind:this={canvas} aria-hidden="true"></canvas>
-  <div class="foot">
+  <div class="foot" style:padding-right="{textInset}px">
     <button
       bind:this={fanner}
       type="button"

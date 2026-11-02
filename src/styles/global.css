@@ -30,7 +30,8 @@
 
   --name: Forum, Georgia, serif;
   --display: "Red Hat Display", system-ui, sans-serif;
-  --text: Inter, system-ui, sans-serif;
+  /* Everything is set in the hero's typeface, except the name and the nav. */
+  --text: "Red Hat Display", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, monospace;
   --max: 960px;
   color-scheme: dark;
@@ -151,7 +152,8 @@ p {
   }
 }
 .label {
-  font-family: var(--mono);
+  font-family: var(--text);
+  font-weight: 500;
   font-size: 12px;
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -206,7 +208,10 @@ p {
 .brand.g3 {
   color: transparent;
 }
+/* The nav keeps its monospace labels. */
 .nav nav {
+  font-family: var(--mono);
+  font-weight: 400;
   display: flex;
   flex-wrap: wrap;
   gap: 36px;

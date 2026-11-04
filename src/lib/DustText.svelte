@@ -1,3 +1,10 @@
+<script lang="ts" module>
+  // The opening plays once per page load; coming back to the home page finds the sand as
+  // it was left: in the plain typeface, or in the drawing if Restore has brought that back.
+  let revealed = false;
+  let restored = false;
+</script>
+
 <script lang="ts">
   import { onMount, type Snippet } from "svelte";
   import fannerOpen from "./assets/fanner-open.png";
@@ -8,14 +15,17 @@
     displaced,
     gustAt,
     makeGrain,
+    pairByLetter,
     patternPoints,
     plough,
     puffFrom,
     startGust,
+    startGustTo,
     startWind,
     windStep,
     type DustPattern,
     type Grain,
+    type InkSpot,
   } from "./dust";
 
   // The page's hero: words made of loose dust on the ground. Dragging across it draws in
@@ -23,7 +33,9 @@
   // at the bottom right, leaning 30° to the left, fans its book when clicked, sending a
   // puff of wind the way the book points. "Restore" then drags every grain home. With a
   // saved `pattern` for the same text, the dust lies in that drawing instead of plain
-  // letters. Drawn on a canvas; the real heading sits beside it for screen readers.
+  // letters, and the visitor's first action (a cursor move, tap, key or scroll) drags the
+  // first line into the plain typeface, where it stays; "Restore" brings back the drawing.
+  // Drawn on a canvas; the real heading sits beside it for screen readers.
   // Anything passed in (the byline) sits under the words, on the figure's row.
   let {
     lines,
@@ -47,6 +59,10 @@
   // (two seconds' worth, so a long stall can't freeze the page catching up).
   const STEP = 1 / 120;
   const MAX_STEPS = 240;
+  // Where the first line's sand ends in the drawing, as a share of the text size.
+  const LINE_GAP = 1.33;
+  // What counts as the visitor's first action.
+  const FIRST_ACTIONS = ["pointermove", "pointerdown", "keydown", "wheel"] as const;
 
   let canvas: HTMLCanvasElement | undefined = $state();
   let fanner: HTMLButtonElement | undefined = $state();
@@ -102,10 +118,13 @@
     let height = 0;
     let raf = 0;
     // A gust dragging grains home: when it began, which grains, when the last arrives.
-    let gust: { t0: number; grains: Set<Grain>; end: number } | null = null;
+    let gust: { t0: number; grains: Set<Grain>; end: number; then?: () => void } | null = null;
     // A puff of wind: when it began, how far (s) the physics has been run, and grains
     // still sliding.
     let wind: { t0: number; sim: number; grains: Grain[] } | null = null;
+    // The first line's sand and its spots on the plain letters; empty without a drawing.
+    let plain: InkSpot[] = [];
+    let revealing = false;
 
     function build() {
       const W = cv.clientWidth - 2 * BLEED;
@@ -125,6 +144,26 @@
       buckets = COLORS.map(() => []);
       const add = (grain: Grain) => buckets[(Math.random() * COLORS.length) | 0]!.push(grain);
       const saved = pattern?.text === lines.join(" ") ? pattern : undefined;
+      // Set text off-screen, returning its pixels.
+      const setText = (text: string[]) => {
+        // Nothing to set while the page has no room for the words (hidden, say); the
+        // resize observer rebuilds once it does.
+        if (W <= 0 || H <= 0) return new Uint8ClampedArray();
+        off.width = W;
+        off.height = H;
+        c.font = font(size);
+        c.fillStyle = "#fff";
+        text.forEach((line, i) => {
+          let x = 0;
+          const y = size * 0.95 + i * size * 1.15;
+          for (const ch of line) {
+            c.fillText(ch, x, y);
+            x += c.measureText(ch).width + size * spacing;
+          }
+        });
+        return c.getImageData(0, 0, W, H).data;
+      };
+      plain = [];
       if (saved) {
         // Scale the drawing from the width it was saved at to this one, keeping the same
         // density: a larger canvas gets proportionally more grains per saved cell.
@@ -138,22 +177,19 @@
             add(makeGrain(tx, ty, false));
           }
         }
-      } else {
-        // Set the text off-screen and scatter a grain on most of its inked pixels.
-        off.width = W;
-        off.height = H;
-        c.font = font(size);
-        c.fillStyle = "#fff";
-        lines.forEach((line, i) => {
-          let x = 0;
-          const y = size * 0.95 + i * size * 1.15;
-          for (const ch of line) {
-            c.fillText(ch, x, y);
-            x += c.measureText(ch).width + size * spacing;
+        const ink: Array<[number, number]> = [];
+        const pixels = setText(lines.slice(0, 1));
+        for (let y = 0; y < H; y++) {
+          for (let x = 0; x < W; x++) {
+            if (pixels[(y * W + x) * 4 + 3]! >= 128) ink.push([x, y]);
           }
-        });
+        }
+        const firstLine = buckets.flat().filter((g) => g.hy < size * LINE_GAP);
+        plain = pairByLetter(firstLine, ink);
+      } else {
+        // Scatter a grain on most of the text's inked pixels.
         const jitter = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
-        const data = c.getImageData(0, 0, W, H).data;
+        const data = setText(lines);
         for (let y = 0; y < H; y += 2) {
           for (let x = 0; x < W; x += 2) {
             if (data[(y * W + x) * 4 + 3]! < 128 || Math.random() > 0.6) continue;
@@ -184,6 +220,7 @@
       const inkRight = textRight - size * 0.12;
       figurePad = Math.max(0, W - (inkRight + FIGURE_REACH + FIGURE_WIDTH));
       restoreInset = W - Math.min(W, lineWidth(lines[0]!, MAX_SIZE) * scale);
+      if (revealed && !restored) layPlain();
     }
 
     function draw() {
@@ -218,15 +255,68 @@
           g.tx = g.gx;
           g.ty = g.gy;
         }
+        const then = gust.then;
         gust = null;
+        then?.();
       }
       if (gust || wind) raf = requestAnimationFrame(draw);
+    }
+
+    // Start a gust over grains already given somewhere to go.
+    function runGust(grains: Grain[], then?: () => void) {
+      const end = Math.max(...grains.map((g) => g.delay)) + GUST;
+      gust = { t0: performance.now(), grains: new Set(grains), end, then };
+      cancelAnimationFrame(raf);
+      draw();
+    }
+
+    // Lay the first line straight onto the plain letters, with Restore there to undo it.
+    function layPlain() {
+      for (const p of plain) {
+        p.g.tx = p.x;
+        p.g.ty = p.y;
+      }
+      if (plain.length) drawn = true;
+    }
+
+    // The visitor's first action: a gust drags the first line into the plain typeface. With
+    // reduced motion it is simply there.
+    function reveal() {
+      if (width <= 0) return; // not drawn yet (fonts loading, or no room for the words)
+      revealed = true;
+      for (const e of FIRST_ACTIONS) window.removeEventListener(e, reveal, true);
+      if (!plain.length) return;
+      if (reduce.matches) {
+        layPlain();
+        draw();
+        return;
+      }
+      revealing = true;
+      for (const p of plain) startGustTo(p.g, p.x, p.y, width);
+      runGust(
+        plain.map((p) => p.g),
+        () => {
+          revealing = false;
+          drawn = true;
+        },
+      );
+    }
+    // Reaching for the sand mid-opening: it drops straight onto the plain letters, so what
+    // they touch is the sand they will keep.
+    function endReveal() {
+      if (!revealing) return;
+      revealing = false;
+      gust = null;
+      layPlain();
+      cancelAnimationFrame(raf);
+      draw();
     }
 
     // A gust sweeps left to right, dragging every displaced grain back to where it lay
     // on load. With reduced motion the grains simply go home.
     blowBack = () => {
       if (gust || wind || !buckets.length) return;
+      restored = true;
       const moving = buckets.flat().filter(displaced);
       drawn = false;
       if (!moving.length) return;
@@ -237,11 +327,10 @@
           g.tx = g.gx;
           g.ty = g.gy;
         }
+        draw();
       } else {
-        const end = Math.max(...moving.map((g) => g.delay)) + GUST;
-        gust = { t0: performance.now(), grains: new Set(moving), end };
+        runGust(moving);
       }
-      draw();
     };
 
     // A puff of wind from the figure's book, blowing the way it points. With reduced
@@ -249,6 +338,7 @@
     // A puff during another one starts a fresh gust over everything it reaches, while
     // grains still moving from the first keep their momentum.
     puff = () => {
+      endReveal();
       if (gust || !buckets.length) return;
       // From the figure's book, wherever the figure actually sits (on narrow screens it
       // wraps below the byline), measured from its layout box, in the words' coordinates.
@@ -277,6 +367,7 @@
     let last: [number, number] | null = null;
     function onPointerDown(e: PointerEvent) {
       if (!buckets.length) return; // not drawn yet (fonts still loading)
+      endReveal();
       cv.setPointerCapture(e.pointerId);
       last = [e.offsetX - BLEED, e.offsetY - BLEED];
     }
@@ -305,12 +396,15 @@
     const resize = new ResizeObserver(() => {
       if (cv.clientWidth - 2 * BLEED === width) return;
       cancelAnimationFrame(raf);
+      revealing = false;
       gust = null;
       wind = null;
       drawn = false;
       build();
       draw();
     });
+
+    if (!revealed) for (const e of FIRST_ACTIONS) window.addEventListener(e, reveal, true);
 
     let cancelled = false;
     document.fonts.load(`600 ${MAX_SIZE}px "Red Hat Display"`).finally(() => {
@@ -323,6 +417,7 @@
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf);
+      for (const e of FIRST_ACTIONS) window.removeEventListener(e, reveal, true);
       resize.disconnect();
       cv.removeEventListener("pointerdown", onPointerDown);
       cv.removeEventListener("pointermove", onPointerMove);

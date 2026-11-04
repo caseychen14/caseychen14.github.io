@@ -5,10 +5,13 @@ import {
   displaced,
   gustAt,
   makeGrain,
+  pairByLetter,
+  pairWithInk,
   patternPoints,
   plough,
   puffFrom,
   startGust,
+  startGustTo,
   startWind,
   windStep,
   windStrength,
@@ -374,5 +377,104 @@ describe("puff strength across the hero", () => {
     expect(far).toBeGreaterThan(0);
     expect(far).toBeLessThan(4);
     expect(near).toBeGreaterThan(far * 8);
+  });
+});
+
+describe("pairWithInk", () => {
+  const blob = (x0: number, n: number, rnd: () => number) =>
+    Array.from({ length: n }, (): [number, number] => [x0 + rnd() * 40, rnd() * 40]);
+
+  it("gives every grain one spot on the ink", () => {
+    const rnd = seeded();
+    const grains = blob(0, 200, rnd).map(([x, y]) => makeGrain(x, y, false, rnd));
+    const ink = blob(0, 1000, rnd);
+    const pairs = pairWithInk(grains, ink, rnd);
+    expect(new Set(pairs.map((p) => p.g)).size).toBe(200);
+    for (const p of pairs) {
+      expect(p.x).toBeGreaterThanOrEqual(-1);
+      expect(p.x).toBeLessThanOrEqual(41);
+      expect(p.y).toBeGreaterThanOrEqual(-1);
+      expect(p.y).toBeLessThanOrEqual(41);
+    }
+  });
+
+  it("still pairs every grain when there is less ink than sand", () => {
+    const rnd = seeded();
+    const grains = blob(0, 50, rnd).map(([x, y]) => makeGrain(x, y, false, rnd));
+    expect(pairWithInk(grains, blob(0, 7, rnd), rnd)).toHaveLength(50);
+  });
+
+  it("has no spots to give when there is no ink", () => {
+    const rnd = seeded();
+    expect(pairWithInk([makeGrain(1, 1, false, rnd)], [], rnd)).toEqual([]);
+  });
+
+  it("sends grains to nearby ink, so a letter's sand mostly stays with that letter", () => {
+    const rnd = seeded();
+    const left = blob(0, 100, rnd).map(([x, y]) => makeGrain(x, y, false, rnd));
+    const right = blob(500, 100, rnd).map(([x, y]) => makeGrain(x, y, false, rnd));
+    const pairs = pairWithInk(
+      [...left, ...right],
+      [...blob(0, 500, rnd), ...blob(500, 500, rnd)],
+      rnd,
+    );
+    // Only the one strip that straddles the gap may cross it (√200, about 15 grains).
+    const crossed = pairs.filter((p) => Math.abs(p.x - p.g.tx) > 60);
+    expect(crossed.length).toBeLessThanOrEqual(15);
+  });
+});
+
+describe("pairByLetter", () => {
+  const blob = (x0: number, n: number, rnd: () => number) =>
+    Array.from({ length: n }, (): [number, number] => [x0 + Math.floor(rnd() * 40), rnd() * 40]);
+
+  it("keeps each letter's sand on that letter, however unevenly the sand is shared", () => {
+    const rnd = seeded();
+    const sand = [...blob(0, 150, rnd), ...blob(100, 50, rnd)];
+    const grains = sand.map(([x, y]) => makeGrain(x, y, false, rnd));
+    // The left letter holds most of the sand but little of the ink.
+    const ink = [...blob(0, 100, rnd), ...blob(100, 900, rnd)];
+    const pairs = pairByLetter(grains, ink, rnd);
+    expect(pairs).toHaveLength(200);
+    for (const p of pairs) expect(p.x < 70).toBe(p.g.tx < 70);
+  });
+
+  it("gives sand lying between two letters to the nearer one", () => {
+    const rnd = seeded();
+    const nearLeft = makeGrain(20, 5, false, rnd);
+    const nearRight = makeGrain(40, 5, false, rnd);
+    // Two solid bars: the only gap between columns of ink runs from 10 to 50.
+    const ink: Array<[number, number]> = [];
+    for (let x = 0; x <= 10; x++) ink.push([x, 5]);
+    for (let x = 50; x <= 60; x++) ink.push([x, 5]);
+    const pairs = pairByLetter([nearLeft, nearRight], ink, rnd);
+    expect(pairs.find((p) => p.g === nearLeft)!.x).toBeLessThan(12);
+    expect(pairs.find((p) => p.g === nearRight)!.x).toBeGreaterThan(48);
+  });
+
+  it("has no spots to give when there is no ink", () => {
+    const rnd = seeded();
+    expect(pairByLetter([makeGrain(1, 1, false, rnd)], [], rnd)).toEqual([]);
+  });
+});
+
+describe("startGustTo", () => {
+  it("drags a grain to the given spot without forgetting where its home is", () => {
+    const rnd = seeded();
+    const g = makeGrain(10, 20, false, rnd);
+    startGustTo(g, 30, 40, 100, rnd);
+    expect(gustAt(g, g.delay + GUST)).toMatchObject({ x: 30, y: 40, done: true });
+    expect([g.hx, g.hy]).toEqual([10, 20]);
+  });
+
+  it("can then be sent home by an ordinary gust, ending exactly where it began", () => {
+    const rnd = seeded();
+    const g = makeGrain(10, 20, false, rnd);
+    startGustTo(g, 30, 40, 100, rnd);
+    g.tx = g.gx;
+    g.ty = g.gy;
+    expect(displaced(g)).toBe(true);
+    startGust(g, 100, rnd);
+    expect(gustAt(g, g.delay + GUST)).toMatchObject({ x: 10, y: 20, done: true });
   });
 });

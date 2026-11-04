@@ -70,10 +70,21 @@ export function displaced(g: Grain): boolean {
  * remember where it lies now and when the gust reaches it.
  */
 export function startGust(g: Grain, width: number, rnd: Rng = Math.random): void {
+  startGustTo(g, g.hx, g.hy, width, rnd);
+}
+
+/** The same gust, dragging the grain to (x, y) instead of to where it lay on load. */
+export function startGustTo(
+  g: Grain,
+  x: number,
+  y: number,
+  width: number,
+  rnd: Rng = Math.random,
+): void {
   g.fx = g.tx;
   g.fy = g.ty;
-  g.gx = g.hx;
-  g.gy = g.hy;
+  g.gx = x;
+  g.gy = y;
   g.delay = (g.fx / Math.max(width, 1)) * 0.5 + rnd() * 0.25;
 }
 
@@ -333,4 +344,77 @@ export function patternPoints(p: DustPattern): Array<[number, number]> {
     }
   }
   return points;
+}
+
+/** A grain and the spot on some letters it can be dragged to. */
+export interface InkSpot {
+  g: Grain;
+  x: number;
+  y: number;
+}
+
+/**
+ * Give each grain a spot on `ink` (the inked pixels of some set text), close to where the
+ * grain lies, so sand moves a short way to the nearest letter rather than across the
+ * words. Both are cut into matching vertical strips and paired top to bottom in each.
+ */
+export function pairWithInk(
+  grains: readonly Grain[],
+  ink: ReadonlyArray<readonly [number, number]>,
+  rnd: Rng = Math.random,
+): InkSpot[] {
+  if (!ink.length) return [];
+  // An even sample of the ink, one spot per grain, spread in proportion across the width
+  // (a purely random one could leave a letter short and pull sand over from its neighbour).
+  const pool = [...ink];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    [pool[i], pool[j]] = [pool[j]!, pool[i]!];
+  }
+  pool.sort((a, b) => a[0] - b[0]);
+  const spots = grains.map(
+    (_, i) => pool[Math.floor(((i + rnd()) * pool.length) / grains.length)]!,
+  );
+  const sand = [...grains].sort((a, b) => a.tx - b.tx);
+  const strip = Math.max(1, Math.ceil(Math.sqrt(sand.length)));
+  const pairs: InkSpot[] = [];
+  for (let i = 0; i < sand.length; i += strip) {
+    const column = sand.slice(i, i + strip).sort((a, b) => a.ty - b.ty);
+    const targets = spots.slice(i, i + strip).sort((a, b) => a[1] - b[1]);
+    column.forEach((g, k) => {
+      pairs.push({ g, x: targets[k]![0] + (rnd() - 0.5), y: targets[k]![1] + (rnd() - 0.5) });
+    });
+  }
+  return pairs;
+}
+
+/**
+ * Give each grain a spot on `ink` within its own letter, so no sand crosses to another
+ * one. Letters are the runs of ink columns (whole-pixel x) with empty columns between
+ * them; sand belongs to the letter it lies nearest, split halfway across each gap.
+ */
+export function pairByLetter(
+  grains: readonly Grain[],
+  ink: ReadonlyArray<readonly [number, number]>,
+  rnd: Rng = Math.random,
+): InkSpot[] {
+  if (!ink.length) return [];
+  const sorted = [...ink].sort((a, b) => a[0] - b[0]);
+  const letters: Array<Array<readonly [number, number]>> = [[sorted[0]!]];
+  const splits: number[] = [];
+  for (let i = 1; i < sorted.length; i++) {
+    const x = sorted[i]![0];
+    const before = sorted[i - 1]![0];
+    if (x - before > 1) {
+      letters.push([]);
+      splits.push((x + before) / 2);
+    }
+    letters[letters.length - 1]!.push(sorted[i]!);
+  }
+  const sand: Grain[][] = letters.map(() => []);
+  for (const g of grains) {
+    const after = splits.findIndex((x) => g.tx < x);
+    sand[after < 0 ? letters.length - 1 : after]!.push(g);
+  }
+  return letters.flatMap((letter, i) => pairWithInk(sand[i]!, letter, rnd));
 }

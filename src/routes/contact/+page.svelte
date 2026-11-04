@@ -1,7 +1,6 @@
 <svelte:head><title>Contact · Casey Chen</title></svelte:head>
 
 <header class="page-head">
-  <p class="label g2">Reach out</p>
   <h1 class="dirt">Contact</h1>
 </header>
 

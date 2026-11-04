@@ -7,11 +7,11 @@
 <svelte:head><title>Projects · Casey Chen</title></svelte:head>
 
 <header class="page-head">
-  <p class="label g2">Work</p>
   <h1 class="dirt">Papers, posters &amp; projects</h1>
 </header>
 
 {#if data.projects.length > 0}
+  <p class="label g2">* designates equal contribution</p>
   <div class="rows section">
     {#each data.projects as project (project.id)}
       <ProjectCard id={project.id} data={project.data} />

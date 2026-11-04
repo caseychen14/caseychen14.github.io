@@ -19,3 +19,11 @@ export function sortProjects<T extends ProjectLike>(projects: T[]): T[] {
 export function byKind<T extends ProjectLike>(projects: T[], kind: ProjectKind): T[] {
   return projects.filter((p) => p.data.kind === kind);
 }
+
+/**
+ * True for an author string referring to the site's owner, allowing a middle initial and a
+ * trailing equal-contribution marker (e.g. "Casey S. Chen *").
+ */
+export function isSelf(author: string): boolean {
+  return /^casey\s+(\w\.\s+)?chen\b/i.test(author.trim());
+}

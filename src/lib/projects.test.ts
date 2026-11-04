@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byKind, sortProjects, type ProjectLike } from "./projects";
+import { byKind, isSelf, sortProjects, type ProjectLike } from "./projects";
 
 const p = (
   id: string,
@@ -34,5 +34,21 @@ describe("byKind", () => {
   it("returns only projects of that kind", () => {
     const out = byKind([p("a", "2026-01-01", "poster"), p("b", "2026-01-01")], "poster");
     expect(out.map((x) => x.id)).toEqual(["a"]);
+  });
+});
+
+describe("isSelf", () => {
+  it("matches plain and middle-initial forms", () => {
+    expect(isSelf("Casey Chen")).toBe(true);
+    expect(isSelf("Casey S. Chen")).toBe(true);
+  });
+
+  it("matches with a trailing equal-contribution marker", () => {
+    expect(isSelf("Casey S. Chen *")).toBe(true);
+  });
+
+  it("does not match other authors or near-miss names", () => {
+    expect(isSelf("Stephanie T. Wang")).toBe(false);
+    expect(isSelf("Casey Chenoir")).toBe(false);
   });
 });

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { resolve } from "$app/paths";
   import { staticUrl } from "#lib/content.ts";
+  import { isSelf } from "#lib/projects.ts";
 
   let { data } = $props();
   const { title, kind, venue, date, authors, summary, pdf, thumbnail, links } = $derived(
@@ -8,9 +9,7 @@
   );
   const Content = $derived(data.project.Content);
   const pdfUrl = $derived(pdf ? staticUrl(pdf) : undefined);
-  const meta = $derived(
-    [authors.join(", "), venue, date.getFullYear()].filter(Boolean).join(" · "),
-  );
+  const meta = $derived([venue, date.getFullYear()].filter(Boolean).join(" · "));
 </script>
 
 <svelte:head>
@@ -20,7 +19,14 @@
 
 <p class="back"><a class="link g3" href={resolve("/projects")}>← All projects</a></p>
 <header class="page-head">
-  <h1 class="dirt">{title}</h1>
+  <h1 class="dirt title">{title}</h1>
+  {#if authors.length > 0}
+    <p class="muted">
+      {#each authors as author, i (author)}{i > 0 ? ", " : ""}{#if isSelf(author)}<strong class="g2"
+            >{author}</strong
+          >{:else}{author}{/if}{/each}
+    </p>
+  {/if}
   <p class="label g2">{meta}</p>
 </header>
 
@@ -50,3 +56,10 @@
 {:else}
   <div class="empty"></div>
 {/if}
+
+<style>
+  /* Paper titles run long; the page default is sized for short page names. */
+  .title {
+    font-size: clamp(1.75rem, 4vw, 2.5rem);
+  }
+</style>
